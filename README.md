@@ -190,3 +190,8 @@ overlapping-window quirk of the real API, so the suite is fast and offline.
 This tool reads public pages at a deliberately slow pace (one request per half second by
 default) and sends no writes, votes, or comments. Please keep `--delay` sane, cache the
 CSV/JSON output rather than re-crawling, and respect joyreactor's terms of use.
+
+## License
+
+[WTFPL](LICENSE) — Do What The Fuck You Want To Public License, version 2.
+Do whatever you want with this code.

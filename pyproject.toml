@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "Collect joyreactor.cc posts of a tag over a date range and summarise scores per author"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = { text = "WTFPL" }
 dependencies = ["requests>=2.31"]
 
 [project.optional-dependencies]
