@@ -1,0 +1,44 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Packaging / build artifacts
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Test & tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# Scrape output (regenerate it instead of committing it)
+reports/
+out/
+posts.csv
+authors.csv
+report.json
+
+# Local configuration & secrets
+.env
+.env.local
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+
+# OS clutter
+.DS_Store
+Thumbs.db
