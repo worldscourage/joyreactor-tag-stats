@@ -134,7 +134,7 @@ joy-stats --tag "Бенефис кринжа" --start 2024-08-23 --end 2024-09-0
 | `--out-dir DIR` | Write `posts.csv`, `authors.csv`, `report.json` into `DIR`. |
 | `--posts-csv`, `--authors-csv`, `--json` | Write individual files to exact paths. |
 | `--sort-authors-by KEY` | `score_sum` (default), `score_max`, `score_min`, `score_avg`, `posts`, `comments_sum`, `author`. |
-| `--no-comment-stats` | Skip the comment-thread columns (one request per post is saved). |
+| `--comment-stats` / `--no-comment-stats` | Collect the comment-thread columns, or skip them. With neither, you are asked. |
 | `--common-tag-share F` | Share above which a tag counts as common and is left out of tag-derived titles (default `0.5`; `1` keeps every tag). |
 | `--show-posts N` | Post rows to print (default 15; `0` prints none). |
 | `--delay SECONDS` | Pause between requests (default 0.5). |
@@ -219,15 +219,30 @@ The two counts differ more often than you would think: a comment with one reply 
 started a 14-message argument beats a comment with three dead-end replies.
 
 A post's whole thread arrives in **one request**, so this costs one extra request per post
-that has comments — the slowest part of a large run. Use `--no-comment-stats` to skip it;
-the columns are then left empty, as they are for posts with no comments. Ties go to the
-earlier comment, so repeated runs agree.
+that has comments — the slowest part of a large run. Ties go to the earlier comment, so
+repeated runs agree.
+
+Because that cost is easy to underestimate, **you are asked before it happens** unless you
+said which you wanted. The question comes after the posts are collected, so it can state
+the real price:
+
+```
+23 of 34 collected posts have comments.
+Reading their threads adds the best / worst / most-answered comment columns and costs 23 requests, ~12 s.
+Collect comment statistics? [Y/n]
+```
+
+Pressing Enter accepts. Pass `--comment-stats` or `--no-comment-stats` to decide up front
+and never see the question — worth doing in scripts and cron jobs, because with no terminal
+to ask on the run **skips** the comment pass and says so in a warning rather than hanging.
+You are not asked when no collected post has comments, since there would be nothing to
+fetch.
 
 ## Development
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 87 tests, no network access required
+pytest          # 100 tests, no network access required
 ruff check .
 ```
 

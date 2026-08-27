@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import sys
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -18,6 +20,7 @@ from .exporters import (
     write_json,
     write_posts_csv,
 )
+from .models import Post
 from .scraper import TagScraper, parse_tag_url
 from .stats import AUTHOR_SORT_KEYS, overall_totals, summarize_by_author
 from .text import COMMON_TAG_SHARE, fill_missing_titles
@@ -108,11 +111,12 @@ def build_parser() -> argparse.ArgumentParser:
     output.add_argument(
         "--comment-stats",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=None,
         help=(
             "Collect the best / worst / most-answered comment of each post. "
-            "Costs one extra request per post with comments; --no-comment-stats "
-            "skips it and leaves those columns empty."
+            "Costs one extra request per post with comments. When neither this "
+            "flag nor --no-comment-stats is given, you are asked once the posts "
+            "are known and the cost can be stated."
         ),
     )
     output.add_argument(
@@ -197,6 +201,79 @@ def resolve_target(args: argparse.Namespace) -> tuple[str, str]:
     return tag, line_type
 
 
+def prompt_yes_no(
+    question: str,
+    *,
+    default: bool,
+    ask: Callable[[str], str] = input,
+) -> bool:
+    """Ask a yes/no question until the answer is understood."""
+    suffix = "[Y/n]" if default else "[y/N]"
+    while True:
+        try:
+            answer = ask(f"{question} {suffix} ").strip().lower()
+        except EOFError:
+            return default
+        except KeyboardInterrupt:
+            raise SystemExit("\nCancelled.") from None
+
+        if not answer:
+            return default
+        if answer in ("y", "yes"):
+            return True
+        if answer in ("n", "no"):
+            return False
+        print("Please answer y or n.")
+
+
+def describe_comment_cost(post_count: int, delay: float) -> str:
+    """A one-line estimate of what reading that many comment threads costs."""
+    # Rounded up: an estimate that reads "0 s" or undersells the wait is worse
+    # than one that is a moment pessimistic.
+    seconds = post_count * delay
+    duration = (
+        f"~{math.ceil(seconds)} s" if seconds < 90 else f"~{math.ceil(seconds / 60)} min"
+    )
+    return f"{post_count} request{'s' if post_count != 1 else ''}, {duration}"
+
+
+def decide_comment_stats(
+    args: argparse.Namespace,
+    posts: Sequence[Post],
+    *,
+    interactive: bool | None = None,
+    ask: Callable[[str], str] = input,
+) -> bool:
+    """Whether to read comment threads: the flag if given, otherwise ask.
+
+    Asking here rather than up front means the question can state the real cost,
+    which depends on how many of the collected posts actually have comments.
+    """
+    if args.comment_stats is not None:
+        return args.comment_stats
+
+    with_comments = sum(1 for post in posts if post.comments)
+    if not with_comments:
+        return False  # Nothing to fetch, so nothing worth asking about.
+
+    if interactive is None:
+        interactive = sys.stdin.isatty()
+    if not interactive:
+        logger.warning(
+            "Skipping comment statistics: no terminal to ask on. Pass "
+            "--comment-stats or --no-comment-stats to choose explicitly."
+        )
+        return False
+
+    cost = describe_comment_cost(with_comments, args.delay)
+    print(
+        f"\n{with_comments} of {len(posts)} collected posts have comments.\n"
+        f"Reading their threads adds the best / worst / most-answered comment "
+        f"columns and costs {cost}."
+    )
+    return prompt_yes_no("Collect comment statistics?", default=True, ask=ask)
+
+
 def output_paths(args: argparse.Namespace) -> dict[str, Path | None]:
     """--out-dir is a shorthand for the three explicit paths."""
     base = args.out_dir
@@ -231,12 +308,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         with GraphQLClient(args.endpoint, delay=args.delay) as client:
-            scraper = TagScraper(
-                client,
-                max_requests=args.max_requests,
-                with_comment_stats=args.comment_stats,
-            )
+            scraper = TagScraper(client, max_requests=args.max_requests)
             posts = scraper.fetch_range(tag, start, end, line_type)
+            collect_comments = decide_comment_stats(args, posts)
+            if collect_comments:
+                posts = scraper.attach_comment_stats(posts)
     except JoyreactorError as error:
         raise SystemExit(f"Could not read the tag: {error}") from error
 
@@ -274,7 +350,7 @@ def _print_report(args, tag, line_type, start, end, posts, authors, totals) -> N
         print("\nPosts (newest first)")
         print(format_posts_table(posts, limit=args.show_posts))
 
-    if args.comment_stats and args.show_posts:
+    if any(post.comment_stats for post in posts) and args.show_posts:
         print("\nComment highlights")
         print(format_comment_highlights(posts, limit=args.show_posts))
 
