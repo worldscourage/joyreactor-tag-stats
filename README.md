@@ -13,6 +13,10 @@ which is the default tag — but any tag works.
 number of comments, a title derived from the post body, creation time, post URL,
 NSFW/banned flags.
 
+**Per post's comment thread:** the **best** comment (author + highest rating), the
+**worst** comment (author + lowest rating), and the **most answered** comment (author +
+direct replies + replies in its whole subtree, however deeply nested).
+
 **Per author:** number of posts, and the **MIN / MAX / SUM** (plus average) of their post
 scores, along with the total comments their posts attracted and their first/last post in
 the period.
@@ -127,6 +131,7 @@ joy-stats --tag "Бенефис кринжа" --start 2024-08-23 --end 2024-09-0
 | `--out-dir DIR` | Write `posts.csv`, `authors.csv`, `report.json` into `DIR`. |
 | `--posts-csv`, `--authors-csv`, `--json` | Write individual files to exact paths. |
 | `--sort-authors-by KEY` | `score_sum` (default), `score_max`, `score_min`, `score_avg`, `posts`, `comments_sum`, `author`. |
+| `--no-comment-stats` | Skip the comment-thread columns (one request per post is saved). |
 | `--show-posts N` | Post rows to print (default 15; `0` prints none). |
 | `--delay SECONDS` | Pause between requests (default 0.5). |
 | `--max-requests N` | Hard cap on API calls, useful while experimenting. |
@@ -160,6 +165,7 @@ retried with a backoff, and overlapping pages are de-duplicated by post id.
 | `config.py` | Endpoint, time zone, and crawler defaults — the only place with site facts. |
 | `client.py` | GraphQL transport: headers, throttling, retries, error translation. |
 | `scraper.py` | Paging through a tag line, date-window logic, API rows → `Post`. |
+| `comments.py` | Fetching a post's comment tree and reducing it to three highlights. |
 | `text.py` | Deriving a readable title from a post's HTML body. |
 | `stats.py` | Per-author aggregation (min/max/sum/count) and run totals. |
 | `exporters.py` | CSV, JSON, and plain-text table rendering. |
@@ -174,16 +180,38 @@ secondary `ratingGeneral` value the API returns is kept in `score_general` for r
 Posts with no text body (a bare image or video) have an empty `title`; the console tables
 show `(no text — image or video post)` for them.
 
+### Comment-thread columns
+
+`posts.csv` carries seven extra columns:
+
+| Column | Meaning |
+| --- | --- |
+| `best_comment_author`, `best_comment_score` | The highest-rated comment in the thread. |
+| `worst_comment_author`, `worst_comment_score` | The lowest-rated comment. |
+| `most_replied_comment_author` | Author of the comment that drew the most discussion. |
+| `most_replied_direct_replies` | Replies made straight to that comment. |
+| `most_replied_total_replies` | Replies in its entire subtree, at any depth. |
+
+The two counts differ more often than you would think: a comment with one reply that
+started a 14-message argument beats a comment with three dead-end replies.
+
+A post's whole thread arrives in **one request**, so this costs one extra request per post
+that has comments — the slowest part of a large run. Use `--no-comment-stats` to skip it;
+the columns are then left empty, as they are for posts with no comments. Ties go to the
+earlier comment, so repeated runs agree.
+
 ## Development
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 51 tests, no network access required
+pytest          # 71 tests, no network access required
 ruff check .
 ```
 
-The tests replace the GraphQL client with a fake that serves canned pages, including the
-overlapping-window quirk of the real API, so the suite is fast and offline.
+The tests replace the GraphQL client with a fake that serves canned listing pages and
+comment threads, including the overlapping-window quirk of the real API, so the suite is
+fast and offline. The reply-counting tests cover deleted parents, cycles, and a
+3000-deep thread.
 
 ## Being a good citizen
 

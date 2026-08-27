@@ -5,13 +5,15 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from dataclasses import replace
 from datetime import datetime
 from typing import Any
 from urllib.parse import unquote, urlparse
 
 from . import config
 from .client import GraphQLClient, JoyreactorError
+from .comments import fetch_comment_stats
 from .models import Post
 from .text import derive_title
 
@@ -54,10 +56,12 @@ class TagScraper:
         *,
         max_requests: int | None = None,
         title_length: int = 120,
+        with_comment_stats: bool = False,
     ) -> None:
         self._client = client
         self._max_requests = max_requests
         self._title_length = title_length
+        self._with_comment_stats = with_comment_stats
         self.total_posts_in_tag: int | None = None
         """Post count the API reports for the whole tag line (not just our window)."""
 
@@ -70,15 +74,12 @@ class TagScraper:
         """
         offset = 0
         seen: set[int] = set()
-        requests_made = 0
 
         while True:
-            if self._max_requests is not None and requests_made >= self._max_requests:
-                logger.warning("Stopping: reached the %d request cap", self._max_requests)
+            if self._out_of_budget():
                 return
 
             batch = self._fetch_batch(tag, line_type, offset)
-            requests_made += 1
             if not batch:
                 return
 
@@ -113,7 +114,52 @@ class TagScraper:
             if post.created_at < start:
                 break  # Everything further back is older than the window.
             collected.append(post)
+
+        if self._with_comment_stats:
+            collected = self.attach_comment_stats(collected)
         return collected
+
+    def attach_comment_stats(self, posts: Sequence[Post]) -> list[Post]:
+        """Return ``posts`` with their comment highlights filled in.
+
+        Costs one request per post that has comments, so it is opt-in. A post
+        whose thread cannot be read keeps its other data and is logged.
+        """
+        with_comments = [post for post in posts if post.comments]
+        logger.info(
+            "Reading comment threads for %d of %d posts", len(with_comments), len(posts)
+        )
+
+        enriched = []
+        for number, post in enumerate(posts, start=1):
+            if self._out_of_budget():
+                enriched.extend(posts[number - 1 :])  # Keep the rest, unenriched.
+                break
+            if not post.comments:
+                enriched.append(post)  # Nothing to fetch, nothing to say.
+                continue
+            try:
+                stats = fetch_comment_stats(self._client, encode_global_id("Post", post.id))
+            except JoyreactorError as error:
+                logger.warning("Comments unavailable for post %d: %s", post.id, error)
+                enriched.append(post)
+                continue
+            enriched.append(replace(post, comment_stats=stats))
+            if number % 25 == 0:
+                logger.info("… %d/%d posts processed", number, len(posts))
+        return enriched
+
+    def _out_of_budget(self) -> bool:
+        """True once we have spent the caller's request allowance."""
+        if self._max_requests is None:
+            return False
+        if self._client.requests_made < self._max_requests:
+            return False
+        logger.warning(
+            "Stopping: reached the %d request cap; results are incomplete",
+            self._max_requests,
+        )
+        return True
 
     def _fetch_batch(self, tag: str, line_type: str, offset: int) -> list[Post]:
         data = self._client.execute(
@@ -171,6 +217,11 @@ def decode_global_id(global_id: str) -> int:
     if not numeric.isdigit():
         raise ValueError(f"Unexpected global id payload: {decoded!r}")
     return int(numeric)
+
+
+def encode_global_id(kind: str, numeric_id: int) -> str:
+    """The inverse of :func:`decode_global_id`: ``("Post", 6309914)`` → ``UG9zdDo2MzA5OTE0``."""
+    return base64.b64encode(f"{kind}:{numeric_id}".encode()).decode()
 
 
 def parse_tag_url(url: str) -> tuple[str, str]:

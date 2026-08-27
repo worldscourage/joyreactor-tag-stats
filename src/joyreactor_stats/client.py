@@ -48,6 +48,8 @@ class GraphQLClient:
             }
         )
         self._last_request_at = 0.0
+        self.requests_made = 0
+        """Every attempt this client has sent, so callers can budget against it."""
 
     def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         """Run one query and return its ``data`` payload."""
@@ -56,6 +58,7 @@ class GraphQLClient:
 
         for attempt in range(1, self.max_retries + 1):
             self._wait_turn()
+            self.requests_made += 1
             try:
                 response = self._session.post(
                     self.endpoint, json=payload, timeout=self.timeout

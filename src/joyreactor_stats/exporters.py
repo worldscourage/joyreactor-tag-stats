@@ -21,6 +21,15 @@ POST_COLUMNS = (
     "url",
     "nsfw",
     "banned",
+    # Comment-thread highlights; empty when comments were not collected or the
+    # post has no comments.
+    "best_comment_author",
+    "best_comment_score",
+    "worst_comment_author",
+    "worst_comment_score",
+    "most_replied_comment_author",
+    "most_replied_direct_replies",
+    "most_replied_total_replies",
 )
 
 AUTHOR_COLUMNS = (
@@ -105,7 +114,47 @@ def format_authors_table(summaries: Sequence[AuthorSummary]) -> str:
     )
 
 
+def format_comment_highlights(posts: Sequence[Post], limit: int | None = None) -> str:
+    """Per-post best / worst / most-answered comment, for the console."""
+    rows = [post for post in posts if post.comment_stats is not None]
+    if not rows:
+        return "(no comment data — the posts have no comments, or --no-comment-stats was used)"
+
+    shown = rows if limit is None else rows[:limit]
+    table = _render_table(
+        headers=(
+            "Post",
+            "Best comment by",
+            "Score",
+            "Worst comment by",
+            "Score",
+            "Most answered by",
+            "Direct",
+            "All",
+        ),
+        rows=[
+            (
+                str(post.id),
+                post.comment_stats.best_author,
+                f"{post.comment_stats.best_score:+.2f}",
+                post.comment_stats.worst_author,
+                f"{post.comment_stats.worst_score:+.2f}",
+                post.comment_stats.most_replied_author,
+                str(post.comment_stats.most_replied_direct),
+                str(post.comment_stats.most_replied_total),
+            )
+            for post in shown
+        ],
+        aligns=("<", "<", ">", "<", ">", "<", ">", ">"),
+        max_widths=(9, 20, 8, 20, 8, 20, 7, 5),
+    )
+    if limit is not None and len(rows) > limit:
+        table += f"\n… and {len(rows) - limit} more posts with comments"
+    return table
+
+
 def _post_row(post: Post) -> dict[str, Any]:
+    stats = post.comment_stats
     return {
         "id": post.id,
         "created_at": post.created_at.isoformat(),
@@ -117,6 +166,13 @@ def _post_row(post: Post) -> dict[str, Any]:
         "url": post.url,
         "nsfw": post.nsfw,
         "banned": post.banned,
+        "best_comment_author": stats.best_author if stats else "",
+        "best_comment_score": round(stats.best_score, 3) if stats else "",
+        "worst_comment_author": stats.worst_author if stats else "",
+        "worst_comment_score": round(stats.worst_score, 3) if stats else "",
+        "most_replied_comment_author": stats.most_replied_author if stats else "",
+        "most_replied_direct_replies": stats.most_replied_direct if stats else "",
+        "most_replied_total_replies": stats.most_replied_total if stats else "",
     }
 
 

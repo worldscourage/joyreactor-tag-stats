@@ -12,6 +12,7 @@ from . import __version__, config
 from .client import GraphQLClient, JoyreactorError
 from .exporters import (
     format_authors_table,
+    format_comment_highlights,
     format_posts_table,
     write_authors_csv,
     write_json,
@@ -93,6 +94,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Author table ordering (default: score_sum).",
     )
     output.add_argument(
+        "--comment-stats",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Collect the best / worst / most-answered comment of each post. "
+            "Costs one extra request per post with comments; --no-comment-stats "
+            "skips it and leaves those columns empty."
+        ),
+    )
+    output.add_argument(
         "--show-posts",
         type=int,
         default=15,
@@ -112,7 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-requests",
         type=int,
         default=None,
-        help="Safety cap on the number of API requests.",
+        help="Safety cap on total API requests (listing pages and comment fetches).",
     )
     tuning.add_argument(
         "--endpoint",
@@ -195,7 +206,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         with GraphQLClient(args.endpoint, delay=args.delay) as client:
-            scraper = TagScraper(client, max_requests=args.max_requests)
+            scraper = TagScraper(
+                client,
+                max_requests=args.max_requests,
+                with_comment_stats=args.comment_stats,
+            )
             posts = scraper.fetch_range(tag, start, end, line_type)
     except JoyreactorError as error:
         raise SystemExit(f"Could not read the tag: {error}") from error
@@ -229,6 +244,10 @@ def _print_report(args, tag, line_type, start, end, posts, authors, totals) -> N
     if args.show_posts:
         print("\nPosts (newest first)")
         print(format_posts_table(posts, limit=args.show_posts))
+
+    if args.comment_stats and args.show_posts:
+        print("\nComment highlights")
+        print(format_comment_highlights(posts, limit=args.show_posts))
 
     print("\nPer-author summary")
     print(format_authors_table(authors))
