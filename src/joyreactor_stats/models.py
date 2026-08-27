@@ -48,6 +48,8 @@ class Post:
     created_at: datetime
     nsfw: bool
     banned: bool
+    tags: tuple[str, ...] = ()
+    """The post's tags, in the order the site lists them."""
     comment_stats: CommentStats | None = None
     """Filled in only when comment collection is enabled and the post has comments."""
 

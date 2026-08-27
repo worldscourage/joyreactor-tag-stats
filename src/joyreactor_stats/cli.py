@@ -20,6 +20,7 @@ from .exporters import (
 )
 from .scraper import TagScraper, parse_tag_url
 from .stats import AUTHOR_SORT_KEYS, overall_totals, summarize_by_author
+from .text import COMMON_TAG_SHARE, fill_missing_titles
 
 logger = logging.getLogger("joyreactor_stats")
 
@@ -94,6 +95,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Author table ordering (default: score_sum).",
     )
     output.add_argument(
+        "--common-tag-share",
+        type=share,
+        default=COMMON_TAG_SHARE,
+        metavar="FRACTION",
+        help=(
+            "Posts with no text get a title built from their tags; tags carried by "
+            f"more than this share of the selection are left out (default: {COMMON_TAG_SHARE}). "
+            "Use 1 to keep every tag."
+        ),
+    )
+    output.add_argument(
         "--comment-stats",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -132,6 +144,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
+
+
+def share(raw: str) -> float:
+    """A fraction in (0, 1], for --common-tag-share."""
+    try:
+        value = float(raw)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(f"{raw!r} is not a number") from error
+    if not 0 < value <= 1:
+        raise argparse.ArgumentTypeError(
+            f"share must be greater than 0 and at most 1, got {value}"
+        )
+    return value
 
 
 def parse_datetime(raw: str) -> datetime:
@@ -214,6 +239,10 @@ def main(argv: list[str] | None = None) -> int:
             posts = scraper.fetch_range(tag, start, end, line_type)
     except JoyreactorError as error:
         raise SystemExit(f"Could not read the tag: {error}") from error
+
+    # Postprocess before anything is reported or written: a text-less post gets
+    # a title from its tags, which can only be judged against the full selection.
+    posts = fill_missing_titles(posts, common_tag_share=args.common_tag_share)
 
     authors = summarize_by_author(posts, sort_by=args.sort_authors_by)
     totals = overall_totals(posts)

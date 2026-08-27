@@ -13,6 +13,9 @@ which is the default tag — but any tag works.
 number of comments, a title derived from the post body, creation time, post URL,
 NSFW/banned flags.
 
+Posts with no text of their own (a bare image or video) are titled from their tags
+instead — see [Titles from tags](#titles-from-tags).
+
 **Per post's comment thread:** the **best** comment (author + highest rating), the
 **worst** comment (author + lowest rating), and the **most answered** comment (author +
 direct replies + replies in its whole subtree, however deeply nested).
@@ -132,6 +135,7 @@ joy-stats --tag "Бенефис кринжа" --start 2024-08-23 --end 2024-09-0
 | `--posts-csv`, `--authors-csv`, `--json` | Write individual files to exact paths. |
 | `--sort-authors-by KEY` | `score_sum` (default), `score_max`, `score_min`, `score_avg`, `posts`, `comments_sum`, `author`. |
 | `--no-comment-stats` | Skip the comment-thread columns (one request per post is saved). |
+| `--common-tag-share F` | Share above which a tag counts as common and is left out of tag-derived titles (default `0.5`; `1` keeps every tag). |
 | `--show-posts N` | Post rows to print (default 15; `0` prints none). |
 | `--delay SECONDS` | Pause between requests (default 0.5). |
 | `--max-requests N` | Hard cap on API calls, useful while experimenting. |
@@ -166,7 +170,7 @@ retried with a backoff, and overlapping pages are de-duplicated by post id.
 | `client.py` | GraphQL transport: headers, throttling, retries, error translation. |
 | `scraper.py` | Paging through a tag line, date-window logic, API rows → `Post`. |
 | `comments.py` | Fetching a post's comment tree and reducing it to three highlights. |
-| `text.py` | Deriving a readable title from a post's HTML body. |
+| `text.py` | Deriving a title from a post's HTML body, or from its tags. |
 | `stats.py` | Per-author aggregation (min/max/sum/count) and run totals. |
 | `exporters.py` | CSV, JSON, and plain-text table rendering. |
 | `cli.py` | Argument parsing and wiring the pieces together. |
@@ -177,8 +181,27 @@ The site shows a weighted rating, which is a float and can be negative — `-14.
 post that got dragged. It is stored as-is (rounded to three decimals in the exports); the
 secondary `ratingGeneral` value the API returns is kept in `score_general` for reference.
 
-Posts with no text body (a bare image or video) have an empty `title`; the console tables
-show `(no text — image or video post)` for them.
+### Titles from tags
+
+Joyreactor posts have no title field, so the first line of the body stands in for one. A
+bare image or video post has no body either — and for those the tags describe the post
+well, so they are used instead:
+
+```
+2025-08-31 14:32  Culexus  -5.00  0  Youtube brainrot, видео, без перевода
+2025-08-31 14:11  Haspen  +27.07  10  Romahypax
+```
+
+Tags shared by **more than half** of the selected posts are left out, because they say
+nothing about any individual post. In a real 34-post run over this tag, that dropped
+`Бенефис кринжа` and `приколы для полных дегенератов` (both on 100% of posts) while
+keeping `видео` — which sat on exactly 17 of 34, and exactly half is not more than half.
+
+This runs as a postprocess pass over the finished selection, before anything is printed or
+written, because "shared by most" can only be judged once every post is known. Change the
+threshold with `--common-tag-share`, or set it to `1` to keep every tag. A post left with
+no distinctive tags keeps an empty `title`, and the console shows
+`(no text — image or video post)` for it.
 
 ### Comment-thread columns
 
@@ -204,7 +227,7 @@ earlier comment, so repeated runs agree.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 71 tests, no network access required
+pytest          # 87 tests, no network access required
 ruff check .
 ```
 

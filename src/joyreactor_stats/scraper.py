@@ -37,6 +37,11 @@ query TagPosts($tag: String!, $lineType: PostLineType!, $offset: Int!) {
         text
         nsfw
         banned
+        postTags {
+          tag {
+            name
+          }
+        }
         user {
           username
         }
@@ -203,6 +208,7 @@ class TagScraper:
             created_at=created_at,
             nsfw=bool(row.get("nsfw")),
             banned=bool(row.get("banned")),
+            tags=_parse_tags(row.get("postTags")),
         )
 
 
@@ -217,6 +223,16 @@ def decode_global_id(global_id: str) -> int:
     if not numeric.isdigit():
         raise ValueError(f"Unexpected global id payload: {decoded!r}")
     return int(numeric)
+
+
+def _parse_tags(post_tags: Any) -> tuple[str, ...]:
+    """Flatten ``postTags: [{tag: {name}}]`` into a tuple of names."""
+    names = []
+    for entry in post_tags or ():
+        name = ((entry or {}).get("tag") or {}).get("name")
+        if name:
+            names.append(name)
+    return tuple(names)
 
 
 def encode_global_id(kind: str, numeric_id: int) -> str:

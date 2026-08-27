@@ -10,11 +10,13 @@ from joyreactor_stats.models import Post
 
 def make_post(
     post_id: int,
-    author: str,
-    score: float,
+    author: str = "someone",
+    score: float = 0.0,
     *,
     comments: int = 0,
     minutes_ago: int = 0,
+    title: str | None = None,
+    tags: tuple[str, ...] = (),
 ) -> Post:
     """A Post with sensible defaults, so tests only state what they care about."""
     created = datetime(2025, 8, 31, 12, 0, tzinfo=SITE_TIMEZONE) - timedelta(minutes=minutes_ago)
@@ -22,11 +24,12 @@ def make_post(
         id=post_id,
         url=f"https://joyreactor.cc/post/{post_id}",
         author=author,
-        title=f"post {post_id}",
+        title=f"post {post_id}" if title is None else title,
         score=score,
         score_general=0.0,
         comments=comments,
         created_at=created,
         nsfw=False,
         banned=False,
+        tags=tags,
     )

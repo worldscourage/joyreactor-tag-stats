@@ -1,9 +1,14 @@
-"""Turning post HTML into something usable as a title."""
+"""Turning post HTML — or, failing that, post tags — into something usable as a title."""
 
 from __future__ import annotations
 
 import html
 import re
+from collections import Counter
+from collections.abc import Sequence
+from dataclasses import replace
+
+from .models import Post
 
 #: The site stores media as placeholders inside the post body, e.g. a picture
 #: becomes the literal text "&attribute_insert_1&". Those carry no meaning here.
@@ -31,6 +36,63 @@ def derive_title(post_html: str | None, max_length: int = DEFAULT_TITLE_LENGTH) 
     text = html.unescape(text)
     text = _WHITESPACE.sub(" ", text).strip()
 
+    return _truncate(text, max_length)
+
+
+def _truncate(text: str, max_length: int) -> str:
     if len(text) <= max_length:
         return text
     return text[: max_length - 1].rstrip() + "…"
+
+
+#: A tag on more than this share of the selected posts says nothing about an
+#: individual post, so it is not worth showing as a title.
+COMMON_TAG_SHARE = 0.5
+
+
+def fill_missing_titles(
+    posts: Sequence[Post],
+    *,
+    common_tag_share: float = COMMON_TAG_SHARE,
+    max_length: int = DEFAULT_TITLE_LENGTH,
+) -> list[Post]:
+    """Give text-less posts a title built from their distinctive tags.
+
+    Image-only posts have no text to derive a title from, but their tags usually
+    describe them well — except for the tags shared by most of the selection
+    (the scraped tag itself, and whatever always travels with it), which carry no
+    information about any single post. Those are dropped.
+
+    Runs over the whole selection because "shared by most" can only be judged
+    once every post is known. Posts that already have a title are untouched, as
+    are posts left with no distinctive tags.
+    """
+    posts = list(posts)
+    if not posts:
+        return posts
+
+    common = _common_tags(posts, common_tag_share)
+    filled = []
+    for post in posts:
+        if post.title:
+            filled.append(post)
+            continue
+        distinctive = [tag for tag in post.tags if tag not in common]
+        if not distinctive:
+            filled.append(post)  # Nothing left worth saying.
+            continue
+        filled.append(replace(post, title=_truncate(", ".join(distinctive), max_length)))
+    return filled
+
+
+def _common_tags(posts: Sequence[Post], share: float) -> set[str]:
+    """Tags carried by more than ``share`` of ``posts``.
+
+    In a selection of one post every tag would be "common", which would throw
+    away the only titles we could build, so the filter stands down there.
+    """
+    if len(posts) < 2:
+        return set()
+
+    counts = Counter(tag for post in posts for tag in set(post.tags))
+    return {tag for tag, count in counts.items() if count > share * len(posts)}

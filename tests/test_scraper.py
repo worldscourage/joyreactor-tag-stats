@@ -28,6 +28,7 @@ def api_row(post_id: int, created_at: str, *, author: str = "Раввин", rati
         "nsfw": False,
         "banned": False,
         "user": {"username": author},
+        "postTags": [{"tag": {"name": TAG}}, {"tag": {"name": "котэ"}}],
     }
 
 
@@ -268,3 +269,23 @@ def test_the_request_cap_covers_comment_fetches_too():
     assert client.requests_made == 3
     assert len(posts) == 3
     assert [post.comment_stats is not None for post in posts] == [True, False, False]
+
+
+def test_post_tags_are_parsed_from_the_listing():
+    client = FakeClient({0: [api_row(70, "2025-08-31T12:00:00+03:00")], 1: []})
+    [post] = list(TagScraper(client).iter_posts(TAG))
+    assert post.tags == (TAG, "котэ")
+
+
+def test_malformed_tag_entries_are_ignored():
+    row = api_row(71, "2025-08-31T12:00:00+03:00")
+    row["postTags"] = [None, {}, {"tag": None}, {"tag": {"name": ""}}, {"tag": {"name": "ok"}}]
+    [post] = list(TagScraper(FakeClient({0: [row], 1: []})).iter_posts(TAG))
+    assert post.tags == ("ok",)
+
+
+def test_missing_post_tags_field_yields_no_tags():
+    row = api_row(72, "2025-08-31T12:00:00+03:00")
+    del row["postTags"]
+    [post] = list(TagScraper(FakeClient({0: [row], 1: []})).iter_posts(TAG))
+    assert post.tags == ()
