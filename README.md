@@ -9,9 +9,9 @@ which is the default tag — but any tag works.
 
 ## What you get
 
-**Per post:** author, score (the users' likes minus dislikes, as the site weighs them),
-number of comments, a title derived from the post body, creation time, post URL,
-NSFW/banned flags.
+**Per post:** author (with their site-wide rating and its star count), score (the users'
+likes minus dislikes, as the site weighs them), number of comments, a title derived from
+the post body, creation time, post URL, NSFW/banned flags.
 
 Posts with no text of their own (a bare image or video) are titled from their tags
 instead — see [Titles from tags](#titles-from-tags).
@@ -20,9 +20,9 @@ instead — see [Titles from tags](#titles-from-tags).
 **worst** comment (author + lowest rating), and the **most answered** comment (author +
 direct replies + replies in its whole subtree, however deeply nested).
 
-**Per author:** number of posts, and the **MIN / MAX / SUM** (plus average) of their post
-scores, along with the total comments their posts attracted and their first/last post in
-the period.
+**Per author:** their rating and stars, number of posts, and the **MIN / MAX / SUM** (plus
+average) of their post scores, along with the total comments their posts attracted and
+their first/last post in the period.
 
 Results are printed as tables and, optionally, written as `posts.csv`, `authors.csv` and a
 combined `report.json`.
@@ -33,11 +33,11 @@ Period: 2025-08-31 00:00 … 2025-09-01 00:00 (Europe/Moscow)
 Posts: 34   Authors: 11   Total score: +585.28   Comments: 261
 
 Per-author summary
-Author         Posts     Min      Max      Sum      Avg  Comments
--------------  -----  ------  -------  -------  -------  --------
-Culexus           17   -5.00    +5.47   -58.96    -3.47        29
-Haspen             4   -7.00   +58.57  +119.46   +29.86        40
-a6pxZxz            2  +84.21  +147.75  +231.96  +115.98        38
+Author         Stars         Rating  Posts     Min      Max      Sum      Avg  Comments
+-------------  ------------  ------  -----  ------  -------  -------  -------  --------
+Culexus        ★★★★             628     17   -5.00    +5.47   -58.96    -3.47        29
+Haspen         ★★★★★★★         3170      4   -7.00   +58.57  +119.46   +29.86        40
+a6pxZxz        ★×14           20620      2  +84.21  +147.75  +231.96  +115.98        38
 ...
 ```
 
@@ -133,7 +133,7 @@ joy-stats --tag "Бенефис кринжа" --start 2024-08-23 --end 2024-09-0
 | `--last-days N` | Shorthand for `--start` = `--end` minus N days. |
 | `--out-dir DIR` | Write `posts.csv`, `authors.csv`, `report.json` into `DIR`. |
 | `--posts-csv`, `--authors-csv`, `--json` | Write individual files to exact paths. |
-| `--sort-authors-by KEY` | `score_sum` (default), `score_max`, `score_min`, `score_avg`, `posts`, `comments_sum`, `author`. |
+| `--sort-authors-by KEY` | `score_sum` (default), `score_max`, `score_min`, `score_avg`, `author_rating`, `posts`, `comments_sum`, `author`. |
 | `--comment-stats` / `--no-comment-stats` | Collect the comment-thread columns, or skip them. With neither, you are asked. |
 | `--common-tag-share F` | Share above which a tag counts as common and is left out of tag-derived titles (default `0.5`; `1` keeps every tag). |
 | `--show-posts N` | Post rows to print (default 15; `0` prints none). |
@@ -171,6 +171,7 @@ retried with a backoff, and overlapping pages are de-duplicated by post id.
 | `scraper.py` | Paging through a tag line, date-window logic, API rows → `Post`. |
 | `comments.py` | Fetching a post's comment tree and reducing it to three highlights. |
 | `text.py` | Deriving a title from a post's HTML body, or from its tags. |
+| `rating.py` | The site's rating → stars thresholds, and nothing else. |
 | `stats.py` | Per-author aggregation (min/max/sum/count) and run totals. |
 | `exporters.py` | CSV, JSON, and plain-text table rendering. |
 | `cli.py` | Argument parsing and wiring the pieces together. |
@@ -180,6 +181,28 @@ retried with a backoff, and overlapping pages are de-duplicated by post id.
 The site shows a weighted rating, which is a float and can be negative — `-14.922` is a
 post that got dragged. It is stored as-is (rounded to three decimals in the exports); the
 secondary `ratingGeneral` value the API returns is kept in `score_general` for reference.
+
+### Author rating and stars
+
+Each post carries its author's site-wide rating, so `author_rating` and `author_stars`
+appear in both CSVs at no extra request — the listing query already returns them.
+
+The rating is a float that grows with everything the user does on the site. The site turns
+it into stars by counting how many thresholds it has passed: 20 rating earns the first
+star, 50 the second, 150 the third, and so on, widening as it goes. `author_stars` uses
+the site's own threshold table, so it equals what the profile page draws. A profile shows
+them in rows of ten; we report the plain total, so a rating of 20 620 is `14`, not "one
+full row and four".
+
+Two caveats worth knowing:
+
+- The rating is a **snapshot at scrape time**, not a value belonging to the post. Re-run
+  the same date range next month and it will differ.
+- In the per-author table the rating is taken from the author's **most recent** post in the
+  window, which is the closest thing we have to their rating now.
+
+In the console tables the stars are drawn as symbols while they fit (`★★★★`) and folded
+into a count past ten (`★×14`), so a wide-rating run stays readable.
 
 ### Titles from tags
 
@@ -242,7 +265,7 @@ fetch.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 100 tests, no network access required
+pytest          # 123 tests, no network access required
 ruff check .
 ```
 

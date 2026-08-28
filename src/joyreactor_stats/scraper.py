@@ -44,6 +44,7 @@ query TagPosts($tag: String!, $lineType: PostLineType!, $offset: Int!) {
         }
         user {
           username
+          rating
         }
       }
     }
@@ -201,6 +202,7 @@ class TagScraper:
             id=post_id,
             url=f"{config.SITE_URL}/post/{post_id}",
             author=user.get("username") or "(deleted user)",
+            author_rating=float(user.get("rating") or 0.0),
             title=derive_title(row.get("text"), self._title_length),
             score=float(row.get("rating") or 0.0),
             score_general=float(row.get("ratingGeneral") or 0.0),

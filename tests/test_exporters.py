@@ -65,3 +65,35 @@ def test_tables_render_headers_and_respect_the_limit(sample_posts):
 def test_tables_handle_no_data():
     assert format_posts_table([]) == "(nothing to show)"
     assert format_authors_table([]) == "(nothing to show)"
+
+
+def test_posts_csv_carries_the_author_rating_and_stars(tmp_path, sample_posts):
+    path = tmp_path / "posts.csv"
+    write_posts_csv(sample_posts, path)
+
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+
+    assert rows[0]["author_rating"] == "20619.87"
+    assert rows[0]["author_stars"] == "14"
+
+
+def test_authors_csv_carries_the_author_rating_and_stars(tmp_path, sample_posts):
+    path = tmp_path / "authors.csv"
+    write_authors_csv(summarize_by_author(sample_posts), path)
+
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        by_author = {row["author"]: row for row in csv.DictReader(handle)}
+
+    assert by_author["Раввин"]["author_stars"] == "14"
+    assert by_author["Culexus"]["author_rating"] == "628.23"
+    assert by_author["Culexus"]["author_stars"] == "4"
+
+
+def test_tables_show_stars(sample_posts):
+    posts_table = format_posts_table(sample_posts)
+    authors_table = format_authors_table(summarize_by_author(sample_posts))
+
+    assert "Stars" in posts_table
+    assert "★×14" in posts_table
+    assert "★★★★" in authors_table  # Culexus, at four stars, fits as symbols.

@@ -11,6 +11,7 @@ from .models import AuthorSummary, Post
 AUTHOR_SORT_KEYS = (
     "score_sum",
     "score_max",
+    "author_rating",
     "score_min",
     "score_avg",
     "posts",
@@ -48,8 +49,12 @@ def _summarize_one(author: str, posts: Sequence[Post]) -> AuthorSummary:
     scores = [post.score for post in posts]
     dates = [post.created_at for post in posts]
     total = sum(scores)
+    # An author's rating changes over time, so the freshest post we saw carries
+    # the closest thing to their rating right now.
+    newest = max(posts, key=lambda post: post.created_at)
     return AuthorSummary(
         author=author,
+        author_rating=newest.author_rating,
         posts=len(posts),
         score_min=min(scores),
         score_max=max(scores),

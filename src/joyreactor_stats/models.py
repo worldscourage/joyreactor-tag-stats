@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from .rating import stars_for_rating
+
 
 @dataclass(frozen=True, slots=True)
 class Comment:
@@ -39,6 +41,8 @@ class Post:
     id: int
     url: str
     author: str
+    author_rating: float
+    """The author's site-wide rating at the time we read the post."""
     title: str
     score: float
     """The rating users voted the post to: positive for likes, negative for dislikes."""
@@ -54,6 +58,11 @@ class Post:
     """Filled in only when comment collection is enabled and the post has comments."""
 
     @property
+    def author_stars(self) -> int:
+        """The author's rating expressed as the star count the site shows."""
+        return stars_for_rating(self.author_rating)
+
+    @property
     def display_title(self) -> str:
         """Something printable even for image-only posts, which carry no text."""
         return self.title or "(no text — image or video post)"
@@ -64,6 +73,8 @@ class AuthorSummary:
     """Aggregated stats for one author over a set of posts."""
 
     author: str
+    author_rating: float
+    """Their site-wide rating, taken from their most recent post in the window."""
     posts: int
     score_min: float
     score_max: float
@@ -72,3 +83,8 @@ class AuthorSummary:
     comments_sum: int
     first_post_at: datetime
     last_post_at: datetime
+
+    @property
+    def author_stars(self) -> int:
+        """The rating expressed as the star count the site shows."""
+        return stars_for_rating(self.author_rating)

@@ -60,3 +60,20 @@ def test_overall_totals(sample_posts):
     assert totals["posts"] == 5
     assert totals["authors"] == 2
     assert totals["comments_sum"] == 100
+
+
+def test_author_rating_comes_from_their_newest_post():
+    posts = [
+        make_post(1, "Раввин", 1.0, minutes_ago=0, author_rating=20619.87),
+        make_post(2, "Раввин", 1.0, minutes_ago=600, author_rating=19000.0),
+    ]
+    summary = summarize_by_author(posts)[0]
+
+    assert summary.author_rating == pytest.approx(20619.87)
+    assert summary.author_stars == 14
+
+
+def test_authors_can_be_sorted_by_rating(sample_posts):
+    ranked = summarize_by_author(sample_posts, sort_by="author_rating")
+
+    assert [item.author for item in ranked] == ["Раввин", "Culexus"]

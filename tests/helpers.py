@@ -16,6 +16,7 @@ def make_post(
     comments: int = 0,
     minutes_ago: int = 0,
     title: str | None = None,
+    author_rating: float = 0.0,
     tags: tuple[str, ...] = (),
 ) -> Post:
     """A Post with sensible defaults, so tests only state what they care about."""
@@ -24,6 +25,7 @@ def make_post(
         id=post_id,
         url=f"https://joyreactor.cc/post/{post_id}",
         author=author,
+        author_rating=author_rating,
         title=f"post {post_id}" if title is None else title,
         score=score,
         score_general=0.0,

@@ -10,10 +10,16 @@ from typing import Any
 
 from .models import AuthorSummary, Post
 
+#: How many stars the site fits on one row before starting another; we use it
+#: only to decide when spelling the stars out stops being readable.
+STARS_PER_ROW = 10
+
 POST_COLUMNS = (
     "id",
     "created_at",
     "author",
+    "author_rating",
+    "author_stars",
     "score",
     "score_general",
     "comments",
@@ -34,6 +40,8 @@ POST_COLUMNS = (
 
 AUTHOR_COLUMNS = (
     "author",
+    "author_rating",
+    "author_stars",
     "posts",
     "score_min",
     "score_max",
@@ -43,6 +51,13 @@ AUTHOR_COLUMNS = (
     "first_post_at",
     "last_post_at",
 )
+
+
+def format_stars(stars: int) -> str:
+    """Stars as the site draws them, folded to ``★×N`` once a row is full."""
+    if stars <= STARS_PER_ROW:
+        return "★" * stars
+    return f"★×{stars}"
 
 
 def write_posts_csv(posts: Sequence[Post], path: Path) -> None:
@@ -75,19 +90,20 @@ def write_json(
 def format_posts_table(posts: Sequence[Post], limit: int | None = None) -> str:
     rows = list(posts if limit is None else posts[:limit])
     table = _render_table(
-        headers=("Date", "Author", "Score", "Comments", "Title"),
+        headers=("Date", "Author", "Stars", "Score", "Comments", "Title"),
         rows=[
             (
                 post.created_at.strftime("%Y-%m-%d %H:%M"),
                 post.author,
+                format_stars(post.author_stars),
                 f"{post.score:+.2f}",
                 str(post.comments),
                 post.display_title,
             )
             for post in rows
         ],
-        aligns=("<", "<", ">", ">", "<"),
-        max_widths=(16, 24, 9, 8, 60),
+        aligns=("<", "<", "<", ">", ">", "<"),
+        max_widths=(16, 24, 12, 9, 8, 60),
     )
     if limit is not None and len(posts) > limit:
         table += f"\n… and {len(posts) - limit} more posts (see the CSV/JSON output)"
@@ -96,10 +112,12 @@ def format_posts_table(posts: Sequence[Post], limit: int | None = None) -> str:
 
 def format_authors_table(summaries: Sequence[AuthorSummary]) -> str:
     return _render_table(
-        headers=("Author", "Posts", "Min", "Max", "Sum", "Avg", "Comments"),
+        headers=("Author", "Stars", "Rating", "Posts", "Min", "Max", "Sum", "Avg", "Comments"),
         rows=[
             (
                 item.author,
+                format_stars(item.author_stars),
+                f"{item.author_rating:.0f}",
                 str(item.posts),
                 f"{item.score_min:+.2f}",
                 f"{item.score_max:+.2f}",
@@ -109,8 +127,8 @@ def format_authors_table(summaries: Sequence[AuthorSummary]) -> str:
             )
             for item in summaries
         ],
-        aligns=("<", ">", ">", ">", ">", ">", ">"),
-        max_widths=(28, 6, 10, 10, 12, 10, 9),
+        aligns=("<", "<", ">", ">", ">", ">", ">", ">", ">"),
+        max_widths=(28, 12, 9, 6, 10, 10, 12, 10, 9),
     )
 
 
@@ -159,6 +177,8 @@ def _post_row(post: Post) -> dict[str, Any]:
         "id": post.id,
         "created_at": post.created_at.isoformat(),
         "author": post.author,
+        "author_rating": round(post.author_rating, 2),
+        "author_stars": post.author_stars,
         "score": round(post.score, 3),
         "score_general": round(post.score_general, 3),
         "comments": post.comments,
@@ -179,6 +199,8 @@ def _post_row(post: Post) -> dict[str, Any]:
 def _author_row(item: AuthorSummary) -> dict[str, Any]:
     return {
         "author": item.author,
+        "author_rating": round(item.author_rating, 2),
+        "author_stars": item.author_stars,
         "posts": item.posts,
         "score_min": round(item.score_min, 3),
         "score_max": round(item.score_max, 3),

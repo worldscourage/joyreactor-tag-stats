@@ -17,7 +17,14 @@ def encode(post_id: int) -> str:
     return base64.b64encode(f"Post:{post_id}".encode()).decode()
 
 
-def api_row(post_id: int, created_at: str, *, author: str = "Раввин", rating: float = 1.0):
+def api_row(
+    post_id: int,
+    created_at: str,
+    *,
+    author: str = "Раввин",
+    rating: float = 1.0,
+    author_rating: float = 4236.31,
+):
     return {
         "id": encode(post_id),
         "createdAt": created_at,
@@ -27,7 +34,7 @@ def api_row(post_id: int, created_at: str, *, author: str = "Раввин", rati
         "text": f"<p>post {post_id}</p>",
         "nsfw": False,
         "banned": False,
-        "user": {"username": author},
+        "user": {"username": author, "rating": author_rating},
         "postTags": [{"tag": {"name": TAG}}, {"tag": {"name": "котэ"}}],
     }
 
@@ -289,3 +296,25 @@ def test_missing_post_tags_field_yields_no_tags():
     del row["postTags"]
     [post] = list(TagScraper(FakeClient({0: [row], 1: []})).iter_posts(TAG))
     assert post.tags == ()
+
+
+def test_posts_carry_the_author_rating():
+    """The listing already returns the author's rating, so it costs no request."""
+    client = FakeClient({0: [api_row(1, "2025-08-31T12:00:00+03:00", author_rating=4236.31)]})
+    scraper = TagScraper(client)
+
+    post = next(scraper.iter_posts(TAG))
+
+    assert post.author_rating == pytest.approx(4236.31)
+    assert post.author_stars == 7
+
+
+def test_a_missing_author_rating_reads_as_zero():
+    row = api_row(1, "2025-08-31T12:00:00+03:00")
+    row["user"] = {"username": "someone"}
+    scraper = TagScraper(FakeClient({0: [row]}))
+
+    post = next(scraper.iter_posts(TAG))
+
+    assert post.author_rating == 0.0
+    assert post.author_stars == 0
