@@ -138,6 +138,8 @@ class Champion:
     score_abs_sum: float | None = None
     score_negative_sum: float | None = None
     """Set on author entries, where the whole body of work is the subject."""
+    chapters: tuple[str, ...] | None = None
+    """Chapter keys an epic hero turned up in; titled by whoever renders them."""
 
     @property
     def author_stars(self) -> int:

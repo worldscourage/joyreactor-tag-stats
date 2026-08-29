@@ -10,6 +10,7 @@ from joyreactor_stats.champions import (
     CHAPTER_KEYS,
     TOP_AUTHORS,
     TOP_COMMENTS,
+    TOP_HEROES,
     TOP_POSTS,
     build_champions,
     load_report,
@@ -399,6 +400,114 @@ def test_a_rating_on_a_half_rounds_the_same_way_every_time():
     # The report keeps two decimals, so a live 4514.5004 becomes 4514.5 there.
     # Both must print alike, which banker's rounding would not do.
     assert whole_rating(4514.5004) == whole_rating(4514.5) == 4515
+
+
+# --- epic heroes -------------------------------------------------------------
+
+
+def heroes(chapters):
+    return chapter(chapters, "epic_heroes").entries
+
+
+def test_an_author_in_several_chapters_becomes_a_hero():
+    posts = [make_post(1, "everywhere", 100.0), make_post(2, "everywhere", -100.0)]
+    entry = heroes(build_champions(posts, []))[0]
+
+    assert entry.author == "everywhere"
+    assert "top_posts" in entry.chapters
+    assert "bottom_posts" in entry.chapters
+
+
+def test_heroes_are_ordered_by_how_many_chapters_they_made():
+    posts = [
+        make_post(1, "broad", 100.0),  # top, most-commented, and the author chapters
+        make_post(2, "broad", -100.0, comments=5),
+        make_post(3, "narrow", 1.0),
+    ]
+    ranked = heroes(build_champions(posts, []))
+
+    assert ranked[0].author == "broad"
+    assert len(ranked[0].chapters) > len(ranked[-1].chapters)
+
+
+def test_one_chapter_alone_is_not_heroic():
+    """An author with a single distinction stays out of the heroes."""
+    comments = [
+        # "onehit" tops the ratings and appears nowhere else; the other three
+        # each land in both the best and the worst chapter.
+        make_comment(1, "onehit", 100.0),
+        make_comment(2, "x", 1.0),
+        make_comment(3, "y", 0.5),
+        make_comment(4, "z", -100.0),
+    ]
+    chapters = build_champions([], comments)
+    listed = [entry.author for entry in heroes(chapters)]
+
+    assert "onehit" not in listed
+    assert listed  # ... while the authors who did repeat are there
+    assert all(len(entry.chapters) >= 2 for entry in heroes(chapters))
+
+
+def test_two_entries_in_one_chapter_still_count_once():
+    posts = [make_post(1, "twice", 5.0), make_post(2, "twice", 4.0)]
+    entry = heroes(build_champions(posts, []))[0]
+
+    assert len(entry.chapters) == len(set(entry.chapters))
+
+
+def test_the_heroes_chapter_never_counts_itself():
+    posts = [make_post(1, "a", 1.0), make_post(2, "a", -1.0)]
+
+    assert all("epic_heroes" not in entry.chapters for entry in heroes(build_champions(posts, [])))
+
+
+def test_at_most_ten_heroes_are_listed():
+    posts = [make_post(index, f"author{index:02d}", float(index)) for index in range(1, 41)]
+
+    assert len(heroes(build_champions(posts, []))) <= TOP_HEROES
+
+
+def test_comment_authors_can_be_heroes_too():
+    posts = [make_post(1, "poster", 5.0)]
+    comments = [
+        make_comment(1, "poster", 50.0, post_id=1, direct_replies=3, total_replies=9),
+        make_comment(2, "other", -50.0, post_id=1),
+    ]
+    listed = {entry.author for entry in heroes(build_champions(posts, comments))}
+
+    assert "poster" in listed
+
+
+def test_a_hero_lists_the_chapter_titles_in_the_reader_language():
+    posts = [make_post(1, "a", 100.0), make_post(2, "a", -100.0)]
+    chapters = build_champions(posts, [])
+
+    english = render_champions(chapters, language="en")
+    russian = render_champions(chapters, language="ru")
+
+    assert "Epic heroes" in english
+    assert "chapters:" in english
+    assert f"- Top {TOP_POSTS} posts" in english
+    assert "Эпические герои" in russian
+    assert f"- Топ-{TOP_POSTS} постов" in russian
+
+
+def test_a_run_with_nobody_repeating_says_so():
+    text = render_champions(build_champions([], []), language="en")
+
+    assert "nobody made it into more than one chapter" in text
+
+
+def test_a_hero_row_reports_a_count_and_no_score(tmp_path):
+    posts = [make_post(1, "a", 100.0), make_post(2, "a", -100.0)]
+    write_all(build_champions(posts, []), tmp_path)
+    document = json.loads((tmp_path / "champions.json").read_text(encoding="utf-8"))
+
+    entry = next(
+        item for item in document["chapters"] if item["key"] == "epic_heroes"
+    )["entries"][0]
+    assert entry["chapter_count"] == len(entry["chapters"])
+    assert "score" not in entry
 
 
 # --- files and the separate command -------------------------------------------

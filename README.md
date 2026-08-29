@@ -195,7 +195,7 @@ what the run already collected. Every entry names the author, their stars and ra
 post's or comment's own score, a link straight to it, and a title (a comment has none, so
 a short excerpt of its text stands in).
 
-Eleven chapters:
+Twelve chapters:
 
 | # | Chapter | Holds |
 | --- | --- | --- |
@@ -210,6 +210,7 @@ Eleven chapters:
 | 9 | Lowest-rated comments | 3 |
 | 10 | Most directly answered comments | 3 |
 | 11 | Biggest thread below a comment | 3, by replies at any depth |
+| 12 | Epic heroes | Up to 10 authors who made several chapters, busiest first |
 
 An author entry leads with the person rather than a single post, links to their profile,
 and carries all three totals at once, so the chapters read against each other:
@@ -230,6 +231,24 @@ sum of zero can still top it.
 
 **Chapter 7** is sorted by the most negative total first — the heaviest pile of dislikes.
 Authors nobody downvoted are left out rather than filling it with a tie at zero.
+
+**Chapter 12** is read out of the other eleven once they are settled, so it never counts
+itself, and several entries in one chapter still count once — the point is breadth, not a
+second helping of the same distinction. Each hero lists the chapters they made, titled in
+the language of the file:
+
+```
+  1. Paulem  2 stars (rating 87)
+      in 7 chapters:
+        - Top 10 posts
+        - Bottom 10 posts
+        - Top 10 posts by number of comments
+        …
+      https://joyreactor.cc/user/Paulem
+```
+
+In the JSON a hero carries `chapters` (the keys) and `chapter_count`, and no `score` —
+they are not there for one, and a `0.0` would read as if they were.
 
 Written as `champions.json` (both languages' chapter titles included), `champions.txt` and
 `champions-ru.txt`. Pass `--no-champions` to skip them; they need `--out-dir`.
@@ -353,7 +372,7 @@ fetch.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 179 tests, no network access required
+pytest          # 189 tests, no network access required
 ruff check .
 ```
 

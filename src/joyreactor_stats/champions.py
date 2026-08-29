@@ -35,6 +35,12 @@ TOP_COMMENTS = 3
 #: How many authors each author chapter holds.
 TOP_AUTHORS = 3
 
+#: How many epic heroes are listed at most.
+TOP_HEROES = 10
+
+#: Chapters an author must appear in before they count as an epic hero.
+HERO_MIN_CHAPTERS = 2
+
 #: Star tiers below this get their own worst-post entry. Ten is where the site
 #: starts a second row of stars, which is as good a line as any to stop at.
 STAR_TIER_LIMIT = 10
@@ -52,6 +58,7 @@ CHAPTER_KEYS = (
     "worst_comments",
     "most_direct_replies",
     "most_total_replies",
+    "epic_heroes",
 )
 
 COMMENT_CHAPTERS = frozenset(
@@ -92,6 +99,10 @@ LABELS: dict[str, dict[str, Any]] = {
         "empty_no_comments": (
             "(comment statistics were not collected — re-run with --comment-stats)"
         ),
+        "epic_heroes": f"Epic heroes: up to {TOP_HEROES} authors who made several chapters",
+        "chapters": ("chapter", "chapters"),
+        "in_chapters": "in {count} {word}:",
+        "empty_no_heroes": "(nobody made it into more than one chapter)",
         "no_title": "(no text — image or video post)",
     },
     "ru": {
@@ -127,6 +138,10 @@ LABELS: dict[str, dict[str, Any]] = {
         "empty_no_comments": (
             "(статистика по комментариям не собиралась — запустите с --comment-stats)"
         ),
+        "epic_heroes": f"Эпические герои: до {TOP_HEROES} авторов, попавших в несколько разделов",
+        "chapters": ("раздел", "раздела", "разделов"),
+        "in_chapters": "в {count} {word}:",
+        "empty_no_heroes": "(никто не попал больше чем в один раздел)",
         "no_title": "(без текста — картинка или видео)",
     },
 }
@@ -148,7 +163,7 @@ def build_champions(
         comments_collected = bool(comments)
 
     empty_comments = None if comments_collected else "empty_no_comments"
-    return [
+    chapters = [
         _chapter("top_posts", _best_posts(posts), "empty_no_posts"),
         _chapter("bottom_posts", _worst_posts(posts), "empty_no_posts"),
         _chapter("most_commented_posts", _most_commented(posts), "empty_no_posts"),
@@ -163,6 +178,10 @@ def build_champions(
         _chapter("most_direct_replies", _most_direct(comments), empty_comments),
         _chapter("most_total_replies", _most_total(comments), empty_comments),
     ]
+    # The heroes are read out of the finished chapters, so this one comes last
+    # and never counts itself.
+    chapters.append(_chapter("epic_heroes", _epic_heroes(chapters), "empty_no_heroes"))
+    return chapters
 
 
 def _chapter(key: str, entries: list[Champion], empty_reason: str | None) -> Chapter:
@@ -230,6 +249,39 @@ def _most_downvoted(posts: Sequence[Post]) -> list[Champion]:
         _author_champion(*entry)
         for entry in ranked[:TOP_AUTHORS]
         if entry[0].score_negative_sum < 0
+    ]
+
+
+def _epic_heroes(chapters: Sequence[Chapter]) -> list[Champion]:
+    """Authors who turned up in more than one chapter, the busiest first.
+
+    Several entries in one chapter still count once: the point is breadth, not
+    a second helping of the same distinction.
+    """
+    seen: dict[str, list[str]] = {}
+    ratings: dict[str, float] = {}
+    for chapter in chapters:
+        for entry in chapter.entries:
+            keys = seen.setdefault(entry.author, [])
+            if chapter.key not in keys:
+                keys.append(chapter.key)
+            ratings.setdefault(entry.author, entry.author_rating)
+
+    heroes = [
+        (author, keys) for author, keys in seen.items() if len(keys) >= HERO_MIN_CHAPTERS
+    ]
+    heroes.sort(key=lambda item: (-len(item[1]), item[0].casefold()))
+    return [
+        Champion(
+            kind="author",
+            title=author,
+            url=f"{SITE_URL}/user/{quote(author)}",
+            score=0.0,
+            author=author,
+            author_rating=ratings[author],
+            chapters=tuple(keys),
+        )
+        for author, keys in heroes[:TOP_HEROES]
     ]
 
 
@@ -415,6 +467,12 @@ def _entry_lines(
             negative=format_side_total(entry.score_negative_sum),
         )
         lines.append(f"{indent}{entry.posts} {posts}, {totals}")
+    if entry.chapters is not None:
+        word = plural(len(entry.chapters), words["chapters"], language)
+        lines.append(
+            f"{indent}" + words["in_chapters"].format(count=len(entry.chapters), word=word)
+        )
+        lines.extend(f"{indent}  - {words[key]}" for key in entry.chapters)
     if entry.comments is not None:
         counted = plural(entry.comments, words["comments"], language)
         lines.append(f"{indent}{entry.comments} {counted}")
@@ -468,6 +526,11 @@ def _entry_row(entry: Champion) -> dict[str, Any]:
         "author_rating": round(entry.author_rating, 2),
         "author_stars": entry.author_stars,
     }
+    if entry.chapters is not None:
+        # A hero is not here for a score, and leaving a 0.0 in would read as one.
+        row.pop("score")
+        row["chapters"] = list(entry.chapters)
+        row["chapter_count"] = len(entry.chapters)
     if entry.posts is not None:
         row["posts"] = entry.posts
         row["score_abs_sum"] = round(entry.score_abs_sum, 3)
