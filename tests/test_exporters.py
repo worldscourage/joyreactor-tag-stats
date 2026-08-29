@@ -11,6 +11,7 @@ from joyreactor_stats.exporters import (
     write_posts_csv,
 )
 from joyreactor_stats.stats import summarize_by_author
+from tests.helpers import make_post
 
 
 def test_posts_csv_roundtrip(tmp_path, sample_posts):
@@ -97,3 +98,32 @@ def test_tables_show_stars(sample_posts):
     assert "Stars" in posts_table
     assert "★×14" in posts_table
     assert "★★★★" in authors_table  # Culexus, at four stars, fits as symbols.
+
+
+def test_authors_csv_splits_the_score_into_plus_and_minus(tmp_path, sample_posts):
+    path = tmp_path / "authors.csv"
+    write_authors_csv(summarize_by_author(sample_posts), path)
+
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        by_author = {row["author"]: row for row in csv.DictReader(handle)}
+
+    assert by_author["Раввин"]["score_positive_sum"] == "92.0"
+    assert by_author["Раввин"]["score_negative_sum"] == "-10.0"
+    assert by_author["Culexus"]["score_positive_sum"] == "20.0"
+    assert by_author["Culexus"]["score_negative_sum"] == "-5.0"
+
+
+def test_authors_table_shows_plus_and_minus_columns(sample_posts):
+    table = format_authors_table(summarize_by_author(sample_posts))
+
+    assert "Plus" in table
+    assert "Minus" in table
+    assert "+92.00" in table
+    assert "-10.00" in table
+
+
+def test_an_empty_side_prints_an_unsigned_zero():
+    summaries = summarize_by_author([make_post(1, "Раввин", 5.0)])
+
+    assert "0.00" in format_authors_table(summaries)
+    assert "+0.00" not in format_authors_table(summaries)

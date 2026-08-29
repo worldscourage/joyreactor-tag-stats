@@ -11,9 +11,11 @@ from .models import AuthorSummary, Post
 AUTHOR_SORT_KEYS = (
     "score_sum",
     "score_max",
-    "author_rating",
     "score_min",
     "score_avg",
+    "score_positive_sum",
+    "score_negative_sum",
+    "author_rating",
     "posts",
     "comments_sum",
     "author",
@@ -60,6 +62,10 @@ def _summarize_one(author: str, posts: Sequence[Post]) -> AuthorSummary:
         score_max=max(scores),
         score_sum=total,
         score_avg=total / len(posts),
+        # A post sitting at exactly zero belongs to neither side, so the two
+        # sums add up to score_sum without counting anything twice.
+        score_positive_sum=sum(score for score in scores if score > 0),
+        score_negative_sum=sum(score for score in scores if score < 0),
         comments_sum=sum(post.comments for post in posts),
         first_post_at=min(dates),
         last_post_at=max(dates),

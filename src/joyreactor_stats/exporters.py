@@ -47,10 +47,21 @@ AUTHOR_COLUMNS = (
     "score_max",
     "score_sum",
     "score_avg",
+    "score_positive_sum",
+    "score_negative_sum",
     "comments_sum",
     "first_post_at",
     "last_post_at",
 )
+
+
+def format_side_total(value: float) -> str:
+    """A one-sided total, where zero means "nothing on this side at all".
+
+    Signing that zero would read as a tiny plus or minus rather than as an
+    absence, so it is the one value here printed without one.
+    """
+    return "0.00" if value == 0 else f"{value:+.2f}"
 
 
 def format_stars(stars: int) -> str:
@@ -112,7 +123,19 @@ def format_posts_table(posts: Sequence[Post], limit: int | None = None) -> str:
 
 def format_authors_table(summaries: Sequence[AuthorSummary]) -> str:
     return _render_table(
-        headers=("Author", "Stars", "Rating", "Posts", "Min", "Max", "Sum", "Avg", "Comments"),
+        headers=(
+            "Author",
+            "Stars",
+            "Rating",
+            "Posts",
+            "Min",
+            "Max",
+            "Sum",
+            "Avg",
+            "Plus",
+            "Minus",
+            "Comments",
+        ),
         rows=[
             (
                 item.author,
@@ -123,12 +146,14 @@ def format_authors_table(summaries: Sequence[AuthorSummary]) -> str:
                 f"{item.score_max:+.2f}",
                 f"{item.score_sum:+.2f}",
                 f"{item.score_avg:+.2f}",
+                format_side_total(item.score_positive_sum),
+                format_side_total(item.score_negative_sum),
                 str(item.comments_sum),
             )
             for item in summaries
         ],
-        aligns=("<", "<", ">", ">", ">", ">", ">", ">", ">"),
-        max_widths=(28, 12, 9, 6, 10, 10, 12, 10, 9),
+        aligns=("<", "<", ">", ">", ">", ">", ">", ">", ">", ">", ">"),
+        max_widths=(28, 12, 9, 6, 10, 10, 12, 10, 12, 12, 9),
     )
 
 
@@ -206,6 +231,8 @@ def _author_row(item: AuthorSummary) -> dict[str, Any]:
         "score_max": round(item.score_max, 3),
         "score_sum": round(item.score_sum, 3),
         "score_avg": round(item.score_avg, 3),
+        "score_positive_sum": round(item.score_positive_sum, 3),
+        "score_negative_sum": round(item.score_negative_sum, 3),
         "comments_sum": item.comments_sum,
         "first_post_at": item.first_post_at.isoformat(),
         "last_post_at": item.last_post_at.isoformat(),

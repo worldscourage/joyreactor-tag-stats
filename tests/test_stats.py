@@ -77,3 +77,44 @@ def test_authors_can_be_sorted_by_rating(sample_posts):
     ranked = summarize_by_author(sample_posts, sort_by="author_rating")
 
     assert [item.author for item in ranked] == ["Раввин", "Culexus"]
+
+
+def test_positive_and_negative_sums_split_the_total():
+    posts = [
+        make_post(1, "Раввин", 10.0),
+        make_post(2, "Раввин", -4.0),
+        make_post(3, "Раввин", 2.5),
+        make_post(4, "Раввин", -1.5),
+    ]
+    summary = summarize_by_author(posts)[0]
+
+    assert summary.score_positive_sum == pytest.approx(12.5)
+    assert summary.score_negative_sum == pytest.approx(-5.5)
+    assert summary.score_positive_sum + summary.score_negative_sum == pytest.approx(
+        summary.score_sum
+    )
+
+
+def test_a_zero_score_post_counts_to_neither_side():
+    posts = [make_post(1, "Раввин", 0.0), make_post(2, "Раввин", 3.0)]
+    summary = summarize_by_author(posts)[0]
+
+    assert summary.score_positive_sum == pytest.approx(3.0)
+    assert summary.score_negative_sum == 0.0
+
+
+def test_an_author_with_only_downvoted_posts_has_no_positive_sum():
+    summary = summarize_by_author([make_post(1, "Раввин", -8.0)])[0]
+
+    assert summary.score_positive_sum == 0.0
+    assert summary.score_negative_sum == pytest.approx(-8.0)
+
+
+def test_authors_can_be_sorted_by_the_new_sums(sample_posts):
+    by_plus = summarize_by_author(sample_posts, sort_by="score_positive_sum")
+    by_minus = summarize_by_author(sample_posts, sort_by="score_negative_sum")
+
+    # Раввин collected +92.0 against Culexus's +20.0 ...
+    assert [item.author for item in by_plus] == ["Раввин", "Culexus"]
+    # ... but Culexus was dragged the least, and descending puts them first.
+    assert [item.author for item in by_minus] == ["Culexus", "Раввин"]

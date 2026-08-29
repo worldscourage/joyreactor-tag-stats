@@ -21,8 +21,9 @@ instead — see [Titles from tags](#titles-from-tags).
 direct replies + replies in its whole subtree, however deeply nested).
 
 **Per author:** their rating and stars, number of posts, and the **MIN / MAX / SUM** (plus
-average) of their post scores, along with the total comments their posts attracted and
-their first/last post in the period.
+average) of their post scores, the sums of their upvoted and downvoted posts kept apart,
+along with the total comments their posts attracted and their first/last post in the
+period.
 
 Results are printed as tables and, optionally, written as `posts.csv`, `authors.csv` and a
 combined `report.json`.
@@ -33,11 +34,11 @@ Period: 2025-08-31 00:00 … 2025-09-01 00:00 (Europe/Moscow)
 Posts: 34   Authors: 11   Total score: +585.28   Comments: 261
 
 Per-author summary
-Author         Stars         Rating  Posts     Min      Max      Sum      Avg  Comments
--------------  ------------  ------  -----  ------  -------  -------  -------  --------
-Culexus        ★★★★             628     17   -5.00    +5.47   -58.96    -3.47        29
-Haspen         ★★★★★★★         3170      4   -7.00   +58.57  +119.46   +29.86        40
-a6pxZxz        ★×14           20620      2  +84.21  +147.75  +231.96  +115.98        38
+Author         Stars         Rating  Posts     Min      Max      Sum      Avg     Plus   Minus  Comments
+-------------  ------------  ------  -----  ------  -------  -------  -------  -------  ------  --------
+Culexus        ★★★★             628     17   -5.00    +5.47   -58.96    -3.47   +21.83  -80.79        29
+Haspen         ★★★★★★★         3170      4   -7.00   +58.57  +119.46   +29.86  +126.46   -7.00        40
+a6pxZxz        ★×14           20620      2  +84.21  +147.75  +231.96  +115.98  +231.96    0.00        38
 ...
 ```
 
@@ -133,7 +134,7 @@ joy-stats --tag "Бенефис кринжа" --start 2024-08-23 --end 2024-09-0
 | `--last-days N` | Shorthand for `--start` = `--end` minus N days. |
 | `--out-dir DIR` | Write `posts.csv`, `authors.csv`, `report.json` into `DIR`. |
 | `--posts-csv`, `--authors-csv`, `--json` | Write individual files to exact paths. |
-| `--sort-authors-by KEY` | `score_sum` (default), `score_max`, `score_min`, `score_avg`, `author_rating`, `posts`, `comments_sum`, `author`. |
+| `--sort-authors-by KEY` | `score_sum` (default), `score_max`, `score_min`, `score_avg`, `score_positive_sum`, `score_negative_sum`, `author_rating`, `posts`, `comments_sum`, `author`. |
 | `--comment-stats` / `--no-comment-stats` | Collect the comment-thread columns, or skip them. With neither, you are asked. |
 | `--common-tag-share F` | Share above which a tag counts as common and is left out of tag-derived titles (default `0.5`; `1` keeps every tag). |
 | `--show-posts N` | Post rows to print (default 15; `0` prints none). |
@@ -181,6 +182,23 @@ retried with a backoff, and overlapping pages are de-duplicated by post id.
 The site shows a weighted rating, which is a float and can be negative — `-14.922` is a
 post that got dragged. It is stored as-is (rounded to three decimals in the exports); the
 secondary `ratingGeneral` value the API returns is kept in `score_general` for reference.
+
+### Upvoted and downvoted totals
+
+`score_positive_sum` and `score_negative_sum` split an author's posts by which side of
+zero they landed on and total each side separately. `score_sum` alone hides the
+difference: an author with one `+100` and one `-100` post and an author with two dead-flat
+posts both sum to zero, but only one of them is polarising.
+
+- A post at **exactly zero** counts to neither side, so the two sums always add back up to
+  `score_sum` with nothing double-counted.
+- An author with nothing on one side gets `0.0` there. In the console that zero prints
+  **unsigned** (`0.00`, not `+0.00`), because it means "no such posts at all" rather than a
+  total that happens to be tiny.
+
+Both are available to `--sort-authors-by`. Note that sorting is descending for every
+numeric key, so `--sort-authors-by score_negative_sum` puts the *least* dragged authors
+first — invert it by reading the table from the bottom.
 
 ### Author rating and stars
 
@@ -265,7 +283,7 @@ fetch.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 123 tests, no network access required
+pytest          # 130 tests, no network access required
 ruff check .
 ```
 

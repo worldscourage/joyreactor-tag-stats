@@ -80,6 +80,10 @@ class AuthorSummary:
     score_max: float
     score_sum: float
     score_avg: float
+    score_positive_sum: float
+    """Scores of their upvoted posts only; ``0.0`` when they have none."""
+    score_negative_sum: float
+    """Scores of their downvoted posts only — negative, or ``0.0`` when none."""
     comments_sum: int
     first_post_at: datetime
     last_post_at: datetime
