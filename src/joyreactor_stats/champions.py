@@ -19,14 +19,21 @@ from collections.abc import Iterable, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
+from .config import SITE_URL
+from .exporters import format_side_total
 from .models import Champion, Chapter, Comment, Post
+from .stats import summarize_by_author
 
 #: How many posts each of the two post chapters holds.
 TOP_POSTS = 10
 
 #: How many comments each comment chapter holds.
 TOP_COMMENTS = 3
+
+#: How many authors each author chapter holds.
+TOP_AUTHORS = 3
 
 #: Star tiers below this get their own worst-post entry. Ten is where the site
 #: starts a second row of stars, which is as good a line as any to stop at.
@@ -38,6 +45,9 @@ CHAPTER_KEYS = (
     "bottom_posts",
     "most_commented_posts",
     "worst_post_per_star_tier",
+    "most_prolific_authors",
+    "biggest_absolute_authors",
+    "most_downvoted_authors",
     "best_comments",
     "worst_comments",
     "most_direct_replies",
@@ -60,6 +70,12 @@ LABELS: dict[str, dict[str, Any]] = {
         "worst_post_per_star_tier": (
             f"Worst post of each author star tier below {STAR_TIER_LIMIT}"
         ),
+        "most_prolific_authors": f"{TOP_AUTHORS} authors with the most posts",
+        "biggest_absolute_authors": (
+            f"{TOP_AUTHORS} authors with the biggest absolute score "
+            "(downvotes counted as loudly as upvotes)"
+        ),
+        "most_downvoted_authors": f"{TOP_AUTHORS} authors with the heaviest downvoted total",
         "best_comments": f"{TOP_COMMENTS} highest-rated comments",
         "worst_comments": f"{TOP_COMMENTS} lowest-rated comments",
         "most_direct_replies": f"{TOP_COMMENTS} most directly answered comments",
@@ -69,6 +85,8 @@ LABELS: dict[str, dict[str, Any]] = {
         "stars": ("star", "stars"),
         "direct_replies": ("direct reply", "direct replies"),
         "comments": ("comment", "comments"),
+        "posts": ("post", "posts"),
+        "author_totals": "total {total}, {absolute} in absolute terms, {negative} downvoted",
         "replies_tail": "{total} in the whole thread",
         "empty_no_posts": "(no posts in this run)",
         "empty_no_comments": (
@@ -87,6 +105,12 @@ LABELS: dict[str, dict[str, Any]] = {
         "worst_post_per_star_tier": (
             f"Худший пост в каждой звёздной группе авторов ниже {STAR_TIER_LIMIT}"
         ),
+        "most_prolific_authors": f"{TOP_AUTHORS} автора с наибольшим числом постов",
+        "biggest_absolute_authors": (
+            f"{TOP_AUTHORS} автора с наибольшим рейтингом по модулю "
+            "(минусы считаются наравне с плюсами)"
+        ),
+        "most_downvoted_authors": f"{TOP_AUTHORS} автора с самой тяжёлой суммой минусов",
         "best_comments": f"{TOP_COMMENTS} комментария с самым высоким рейтингом",
         "worst_comments": f"{TOP_COMMENTS} комментария с самым низким рейтингом",
         "most_direct_replies": f"{TOP_COMMENTS} комментария с наибольшим числом прямых ответов",
@@ -96,6 +120,8 @@ LABELS: dict[str, dict[str, Any]] = {
         "stars": ("звезда", "звезды", "звёзд"),
         "direct_replies": ("прямой ответ", "прямых ответа", "прямых ответов"),
         "comments": ("комментарий", "комментария", "комментариев"),
+        "posts": ("пост", "поста", "постов"),
+        "author_totals": "всего {total}, по модулю {absolute}, минусы {negative}",
         "replies_tail": "{total} во всей ветке",
         "empty_no_posts": "(в этом запуске нет постов)",
         "empty_no_comments": (
@@ -129,6 +155,9 @@ def build_champions(
         _chapter(
             "worst_post_per_star_tier", _worst_post_per_tier(posts), "empty_no_posts"
         ),
+        _chapter("most_prolific_authors", _most_prolific(posts), "empty_no_posts"),
+        _chapter("biggest_absolute_authors", _biggest_absolute(posts), "empty_no_posts"),
+        _chapter("most_downvoted_authors", _most_downvoted(posts), "empty_no_posts"),
         _chapter("best_comments", _best_comments(comments), empty_comments),
         _chapter("worst_comments", _worst_comments(comments), empty_comments),
         _chapter("most_direct_replies", _most_direct(comments), empty_comments),
@@ -179,6 +208,61 @@ def _worst_post_per_tier(posts: Sequence[Post]) -> list[Champion]:
         if current is None or (post.score, post.id) < (current.score, current.id):
             worst_by_tier[tier] = post
     return [_post_champion(worst_by_tier[tier]) for tier in sorted(worst_by_tier)]
+
+
+def _most_prolific(posts: Sequence[Post]) -> list[Champion]:
+    ranked = _authors(posts, key=lambda entry: (-entry[0].posts, entry[0].author.casefold()))
+    return [_author_champion(*entry) for entry in ranked[:TOP_AUTHORS]]
+
+
+def _biggest_absolute(posts: Sequence[Post]) -> list[Champion]:
+    """Loudest by volume: an author dragged to -200 counts as far as one praised to +200."""
+    ranked = _authors(posts, key=lambda entry: (-entry[1], entry[0].author.casefold()))
+    return [_author_champion(*entry) for entry in ranked[:TOP_AUTHORS]]
+
+
+def _most_downvoted(posts: Sequence[Post]) -> list[Champion]:
+    """The heaviest pile of dislikes, so the most negative sum comes first."""
+    ranked = _authors(
+        posts, key=lambda entry: (entry[0].score_negative_sum, entry[0].author.casefold())
+    )
+    return [
+        _author_champion(*entry)
+        for entry in ranked[:TOP_AUTHORS]
+        if entry[0].score_negative_sum < 0
+    ]
+
+
+def _authors(posts: Sequence[Post], *, key: Any) -> list[tuple[Any, float]]:
+    """Author summaries paired with their absolute score total, sorted by ``key``.
+
+    The absolute total lives here rather than in :class:`AuthorSummary` because
+    only the champions care about it, and the CSV columns are a promise to
+    whoever reads them.
+    """
+    absolute: dict[str, float] = {}
+    for post in posts:
+        absolute[post.author] = absolute.get(post.author, 0.0) + abs(post.score)
+
+    paired = [
+        (summary, absolute.get(summary.author, 0.0))
+        for summary in summarize_by_author(posts)
+    ]
+    return sorted(paired, key=key)
+
+
+def _author_champion(summary: Any, absolute: float) -> Champion:
+    return Champion(
+        kind="author",
+        title=summary.author,
+        url=f"{SITE_URL}/user/{quote(summary.author)}",
+        score=summary.score_sum,
+        author=summary.author,
+        author_rating=summary.author_rating,
+        posts=summary.posts,
+        score_abs_sum=absolute,
+        score_negative_sum=summary.score_negative_sum,
+    )
 
 
 def _best_comments(comments: Sequence[Comment]) -> list[Champion]:
@@ -304,15 +388,33 @@ def _header_lines(meta: dict[str, Any], words: dict[str, Any]) -> list[str]:
 def _entry_lines(
     place: int, entry: Champion, words: dict[str, Any], language: str
 ) -> list[str]:
-    title = entry.title or words["no_title"]
     indent = " " * 6
     stars = plural(entry.author_stars, words["stars"], language)
-    lines = [
-        f"{place:>3}. {entry.score:+.2f}  {title}",
-        f"{indent}{words['by']} {entry.author}  "
+    who = (
         f"{entry.author_stars} {stars} "
-        f"({words['rating']} {whole_rating(entry.author_rating)})",
-    ]
+        f"({words['rating']} {whole_rating(entry.author_rating)})"
+    )
+
+    if entry.kind == "author":
+        # The author is the subject of these chapters, so they lead the entry
+        # and their totals follow; there is no single instance to headline.
+        lines = [f"{place:>3}. {entry.author}  {who}"]
+    else:
+        lines = [
+            f"{place:>3}. {entry.score:+.2f}  {entry.title or words['no_title']}",
+            f"{indent}{words['by']} {entry.author}  {who}",
+        ]
+
+    if entry.posts is not None:
+        posts = plural(entry.posts, words["posts"], language)
+        # A zero total means "nothing on that side at all", so it prints
+        # unsigned here exactly as it does in the author table.
+        totals = words["author_totals"].format(
+            total=format_side_total(entry.score),
+            absolute=f"{entry.score_abs_sum:.2f}",
+            negative=format_side_total(entry.score_negative_sum),
+        )
+        lines.append(f"{indent}{entry.posts} {posts}, {totals}")
     if entry.comments is not None:
         counted = plural(entry.comments, words["comments"], language)
         lines.append(f"{indent}{entry.comments} {counted}")
@@ -366,6 +468,10 @@ def _entry_row(entry: Champion) -> dict[str, Any]:
         "author_rating": round(entry.author_rating, 2),
         "author_stars": entry.author_stars,
     }
+    if entry.posts is not None:
+        row["posts"] = entry.posts
+        row["score_abs_sum"] = round(entry.score_abs_sum, 3)
+        row["score_negative_sum"] = round(entry.score_negative_sum, 3)
     if entry.comments is not None:
         row["comments"] = entry.comments
     if entry.direct_replies is not None:

@@ -8,6 +8,7 @@ import pytest
 
 from joyreactor_stats.champions import (
     CHAPTER_KEYS,
+    TOP_AUTHORS,
     TOP_COMMENTS,
     TOP_POSTS,
     build_champions,
@@ -166,6 +167,111 @@ def test_a_tier_with_one_post_lists_it_however_good_it_was():
     entries = chapter(build_champions(posts, []), "worst_post_per_star_tier").entries
 
     assert [entry.score for entry in entries] == [pytest.approx(99.0)]
+
+
+# --- authors -----------------------------------------------------------------
+
+
+def test_most_prolific_authors_rank_by_how_many_posts_they_wrote():
+    posts = [make_post(index, "busy", 1.0) for index in range(1, 6)]
+    posts += [make_post(10, "quiet", 500.0), make_post(11, "middling", 1.0)]
+    posts += [make_post(12, "middling", 1.0)]
+    entries = chapter(build_champions(posts, []), "most_prolific_authors").entries
+
+    assert [entry.author for entry in entries] == ["busy", "middling", "quiet"]
+    assert [entry.posts for entry in entries] == [5, 2, 1]
+
+
+def test_absolute_score_counts_a_dragging_as_loudly_as_praise():
+    posts = [
+        make_post(1, "hated", -200.0),
+        make_post(2, "loved", 100.0),
+        make_post(3, "balanced", 60.0),
+        make_post(4, "balanced", -60.0),
+    ]
+    entries = chapter(build_champions(posts, []), "biggest_absolute_authors").entries
+
+    assert [entry.author for entry in entries] == ["hated", "balanced", "loved"]
+    assert [entry.score_abs_sum for entry in entries] == [200.0, 120.0, 100.0]
+
+
+def test_the_absolute_total_does_not_cancel_itself_out():
+    posts = [make_post(1, "swingy", 50.0), make_post(2, "swingy", -50.0)]
+    entry = chapter(build_champions(posts, []), "biggest_absolute_authors").entries[0]
+
+    assert entry.score == pytest.approx(0.0)  # their plain sum cancels ...
+    assert entry.score_abs_sum == pytest.approx(100.0)  # ... the absolute one does not
+
+
+def test_most_downvoted_authors_lead_with_the_heaviest_pile():
+    posts = [
+        make_post(1, "mauled", -90.0),
+        make_post(2, "scratched", -3.0),
+        make_post(3, "bruised", -40.0),
+    ]
+    entries = chapter(build_champions(posts, []), "most_downvoted_authors").entries
+
+    assert [entry.author for entry in entries] == ["mauled", "bruised", "scratched"]
+
+
+def test_authors_nobody_downvoted_are_not_downvote_champions():
+    posts = [make_post(1, "clean", 10.0), make_post(2, "dinged", -1.0)]
+    entries = chapter(build_champions(posts, []), "most_downvoted_authors").entries
+
+    assert [entry.author for entry in entries] == ["dinged"]
+
+
+def test_an_author_entry_links_to_their_profile():
+    posts = [make_post(1, "Раввин", 1.0, author_rating=20619.87)]
+    entry = chapter(build_champions(posts, []), "most_prolific_authors").entries[0]
+
+    assert entry.kind == "author"
+    assert entry.url.startswith("https://joyreactor.cc/user/")
+    assert "%D0%A0" in entry.url  # Cyrillic names are escaped for the URL.
+    assert entry.author_stars == 14
+
+
+def test_author_chapters_are_capped_at_three():
+    posts = [make_post(index, f"author{index}", float(index)) for index in range(1, 9)]
+
+    for key in ("most_prolific_authors", "biggest_absolute_authors"):
+        assert len(chapter(build_champions(posts, []), key).entries) == TOP_AUTHORS
+
+
+def test_an_author_entry_reads_as_a_person_not_a_post():
+    posts = [make_post(1, "Solo", 12.0, author_rating=25.0), make_post(2, "Solo", -2.0)]
+    text = render_champions(build_champions(posts, []), language="en")
+
+    assert "1. Solo  1 star (rating 25)" in text
+    assert "2 posts, total +10.00, 14.00 in absolute terms, -2.00 downvoted" in text
+
+
+def test_author_totals_are_worded_in_russian_too():
+    posts = [make_post(1, "Solo", 12.0, author_rating=25.0), make_post(2, "Solo", -2.0)]
+    text = render_champions(build_champions(posts, []), language="ru")
+
+    assert "2 поста, всего +10.00, по модулю 14.00, минусы -2.00" in text
+
+
+def test_an_author_with_no_downvotes_shows_an_unsigned_zero():
+    posts = [make_post(1, "Clean", 5.0)]
+    text = render_champions(build_champions(posts, []), language="en")
+
+    assert "1 post, total +5.00, 5.00 in absolute terms, 0.00 downvoted" in text
+
+
+def test_the_json_carries_the_author_totals(tmp_path):
+    posts = [make_post(1, "Solo", 12.0), make_post(2, "Solo", -2.0)]
+    write_all(build_champions(posts, []), tmp_path)
+    document = json.loads((tmp_path / "champions.json").read_text(encoding="utf-8"))
+
+    entry = next(
+        item for item in document["chapters"] if item["key"] == "most_prolific_authors"
+    )["entries"][0]
+    assert entry["kind"] == "author"
+    assert entry["posts"] == 2
+    assert entry["score_abs_sum"] == 14.0
+    assert entry["score_negative_sum"] == -2.0
 
 
 # --- comments ----------------------------------------------------------------

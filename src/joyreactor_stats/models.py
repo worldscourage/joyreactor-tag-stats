@@ -134,6 +134,10 @@ class Champion:
     """Only set for entries chosen by how much they were answered."""
     comments: int | None = None
     """Only set where the comment count is the reason the entry is here."""
+    posts: int | None = None
+    score_abs_sum: float | None = None
+    score_negative_sum: float | None = None
+    """Set on author entries, where the whole body of work is the subject."""
 
     @property
     def author_stars(self) -> int:

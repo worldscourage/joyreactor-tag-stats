@@ -195,7 +195,7 @@ what the run already collected. Every entry names the author, their stars and ra
 post's or comment's own score, a link straight to it, and a title (a comment has none, so
 a short excerpt of its text stands in).
 
-Eight chapters:
+Eleven chapters:
 
 | # | Chapter | Holds |
 | --- | --- | --- |
@@ -203,14 +203,33 @@ Eight chapters:
 | 2 | Bottom posts | The 10 lowest-scoring posts |
 | 3 | Most commented posts | The 10 posts with the most comments |
 | 4 | Worst post per author star tier | For each tier below 10 stars that appears at all, that tier's lowest-scoring post |
-| 5 | Highest-rated comments | 3 |
-| 6 | Lowest-rated comments | 3 |
-| 7 | Most directly answered comments | 3 |
-| 8 | Biggest thread below a comment | 3, by replies at any depth |
+| 5 | Most prolific authors | 3, by number of posts |
+| 6 | Biggest absolute score | 3 authors, counting a dragging as loudly as praise |
+| 7 | Heaviest downvoted total | 3 authors, by the most negative sum |
+| 8 | Highest-rated comments | 3 |
+| 9 | Lowest-rated comments | 3 |
+| 10 | Most directly answered comments | 3 |
+| 11 | Biggest thread below a comment | 3, by replies at any depth |
+
+An author entry leads with the person rather than a single post, links to their profile,
+and carries all three totals at once, so the chapters read against each other:
+
+```
+  1. Kirk_Black  6 stars (rating 1864)
+      15 posts, total +180.03, 323.16 in absolute terms, -71.56 downvoted
+      https://joyreactor.cc/user/Kirk_Black
+```
 
 Chapter 3 ranks by comments alone and prints the count, so a post that was voted down but
 argued over at length still shows up — which is usually the interesting one. Posts nobody
 commented on are left out of it.
+
+**Chapter 6** sums `abs(score)` per author, so +200 and −200 weigh the same: it finds who
+was *loudest*, not who was liked. An author whose praise and dragging cancel out to a plain
+sum of zero can still top it.
+
+**Chapter 7** is sorted by the most negative total first — the heaviest pile of dislikes.
+Authors nobody downvoted are left out rather than filling it with a tie at zero.
 
 Written as `champions.json` (both languages' chapter titles included), `champions.txt` and
 `champions-ru.txt`. Pass `--no-champions` to skip them; they need `--out-dir`.
@@ -334,7 +353,7 @@ fetch.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 168 tests, no network access required
+pytest          # 179 tests, no network access required
 ruff check .
 ```
 
