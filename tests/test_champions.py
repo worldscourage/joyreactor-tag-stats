@@ -79,6 +79,49 @@ def test_empty_input_says_why_it_is_empty():
     assert top.empty_reason == "empty_no_posts"
 
 
+def test_most_commented_posts_rank_by_comments_not_by_score():
+    posts = [
+        make_post(1, "quiet_hit", 500.0, comments=1),
+        make_post(2, "argument", -80.0, comments=90),
+        make_post(3, "middling", 10.0, comments=40),
+    ]
+    entries = chapter(build_champions(posts, []), "most_commented_posts").entries
+
+    assert [entry.author for entry in entries] == ["argument", "middling", "quiet_hit"]
+    assert [entry.comments for entry in entries] == [90, 40, 1]
+
+
+def test_posts_nobody_commented_on_are_left_out():
+    posts = [make_post(1, "silent", 5.0, comments=0), make_post(2, "talked", 5.0, comments=3)]
+    entries = chapter(build_champions(posts, []), "most_commented_posts").entries
+
+    assert [entry.author for entry in entries] == ["talked"]
+
+
+def test_the_most_commented_chapter_stops_at_ten():
+    posts = [make_post(index, comments=index) for index in range(1, 21)]
+    entries = chapter(build_champions(posts, []), "most_commented_posts").entries
+
+    assert len(entries) == TOP_POSTS
+    assert [entry.comments for entry in entries] == list(range(20, 10, -1))
+
+
+def test_the_comment_count_is_written_out_in_both_languages():
+    posts = [make_post(1, "a", 1.0, comments=1)]
+    chapters = build_champions(posts, [])
+
+    assert "1 comment\n" in render_champions(chapters, language="en")
+    assert "1 комментарий" in render_champions(chapters, language="ru")
+
+
+def test_only_the_comment_count_chapter_states_a_count():
+    posts = [make_post(1, "a", 1.0, comments=7)]
+    chapters = build_champions(posts, [])
+
+    assert chapter(chapters, "top_posts").entries[0].comments is None
+    assert chapter(chapters, "most_commented_posts").entries[0].comments == 7
+
+
 # --- worst post per star tier ------------------------------------------------
 
 

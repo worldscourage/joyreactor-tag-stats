@@ -36,6 +36,7 @@ STAR_TIER_LIMIT = 10
 CHAPTER_KEYS = (
     "top_posts",
     "bottom_posts",
+    "most_commented_posts",
     "worst_post_per_star_tier",
     "best_comments",
     "worst_comments",
@@ -55,6 +56,7 @@ LABELS: dict[str, dict[str, Any]] = {
         "generated_from": "Posts / comments",
         "top_posts": f"Top {TOP_POSTS} posts",
         "bottom_posts": f"Bottom {TOP_POSTS} posts",
+        "most_commented_posts": f"Top {TOP_POSTS} posts by number of comments",
         "worst_post_per_star_tier": (
             f"Worst post of each author star tier below {STAR_TIER_LIMIT}"
         ),
@@ -66,6 +68,7 @@ LABELS: dict[str, dict[str, Any]] = {
         "rating": "rating",
         "stars": ("star", "stars"),
         "direct_replies": ("direct reply", "direct replies"),
+        "comments": ("comment", "comments"),
         "replies_tail": "{total} in the whole thread",
         "empty_no_posts": "(no posts in this run)",
         "empty_no_comments": (
@@ -80,6 +83,7 @@ LABELS: dict[str, dict[str, Any]] = {
         "generated_from": "Постов / комментариев",
         "top_posts": f"Топ-{TOP_POSTS} постов",
         "bottom_posts": f"Худшие {TOP_POSTS} постов",
+        "most_commented_posts": f"Топ-{TOP_POSTS} постов по числу комментариев",
         "worst_post_per_star_tier": (
             f"Худший пост в каждой звёздной группе авторов ниже {STAR_TIER_LIMIT}"
         ),
@@ -91,6 +95,7 @@ LABELS: dict[str, dict[str, Any]] = {
         "rating": "рейтинг",
         "stars": ("звезда", "звезды", "звёзд"),
         "direct_replies": ("прямой ответ", "прямых ответа", "прямых ответов"),
+        "comments": ("комментарий", "комментария", "комментариев"),
         "replies_tail": "{total} во всей ветке",
         "empty_no_posts": "(в этом запуске нет постов)",
         "empty_no_comments": (
@@ -120,6 +125,7 @@ def build_champions(
     return [
         _chapter("top_posts", _best_posts(posts), "empty_no_posts"),
         _chapter("bottom_posts", _worst_posts(posts), "empty_no_posts"),
+        _chapter("most_commented_posts", _most_commented(posts), "empty_no_posts"),
         _chapter(
             "worst_post_per_star_tier", _worst_post_per_tier(posts), "empty_no_posts"
         ),
@@ -146,6 +152,16 @@ def _best_posts(posts: Sequence[Post]) -> list[Champion]:
 def _worst_posts(posts: Sequence[Post]) -> list[Champion]:
     ranked = sorted(posts, key=lambda post: (post.score, post.id))
     return [_post_champion(post) for post in ranked[:TOP_POSTS]]
+
+
+def _most_commented(posts: Sequence[Post]) -> list[Champion]:
+    """The posts that got people talking, whatever the vote said about them."""
+    ranked = sorted(posts, key=lambda post: (-post.comments, post.id))
+    return [
+        _post_champion(post, with_comments=True)
+        for post in ranked[:TOP_POSTS]
+        if post.comments
+    ]
 
 
 def _worst_post_per_tier(posts: Sequence[Post]) -> list[Champion]:
@@ -189,7 +205,7 @@ def _most_total(comments: Sequence[Comment]) -> list[Champion]:
     return [_comment_champion(item) for item in ranked[:TOP_COMMENTS] if item.total_replies]
 
 
-def _post_champion(post: Post) -> Champion:
+def _post_champion(post: Post, *, with_comments: bool = False) -> Champion:
     return Champion(
         kind="post",
         title=post.title,
@@ -197,6 +213,7 @@ def _post_champion(post: Post) -> Champion:
         score=post.score,
         author=post.author,
         author_rating=post.author_rating,
+        comments=post.comments if with_comments else None,
     )
 
 
@@ -296,6 +313,9 @@ def _entry_lines(
         f"{entry.author_stars} {stars} "
         f"({words['rating']} {whole_rating(entry.author_rating)})",
     ]
+    if entry.comments is not None:
+        counted = plural(entry.comments, words["comments"], language)
+        lines.append(f"{indent}{entry.comments} {counted}")
     if entry.direct_replies is not None:
         replies = plural(entry.direct_replies, words["direct_replies"], language)
         tail = words["replies_tail"].format(total=entry.total_replies)
@@ -346,6 +366,8 @@ def _entry_row(entry: Champion) -> dict[str, Any]:
         "author_rating": round(entry.author_rating, 2),
         "author_stars": entry.author_stars,
     }
+    if entry.comments is not None:
+        row["comments"] = entry.comments
     if entry.direct_replies is not None:
         row["direct_replies"] = entry.direct_replies
         row["total_replies"] = entry.total_replies

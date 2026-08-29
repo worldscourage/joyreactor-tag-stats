@@ -195,17 +195,22 @@ what the run already collected. Every entry names the author, their stars and ra
 post's or comment's own score, a link straight to it, and a title (a comment has none, so
 a short excerpt of its text stands in).
 
-Seven chapters:
+Eight chapters:
 
 | # | Chapter | Holds |
 | --- | --- | --- |
 | 1 | Top posts | The 10 highest-scoring posts |
 | 2 | Bottom posts | The 10 lowest-scoring posts |
-| 3 | Worst post per author star tier | For each tier below 10 stars that appears at all, that tier's lowest-scoring post |
-| 4 | Highest-rated comments | 3 |
-| 5 | Lowest-rated comments | 3 |
-| 6 | Most directly answered comments | 3 |
-| 7 | Biggest thread below a comment | 3, by replies at any depth |
+| 3 | Most commented posts | The 10 posts with the most comments |
+| 4 | Worst post per author star tier | For each tier below 10 stars that appears at all, that tier's lowest-scoring post |
+| 5 | Highest-rated comments | 3 |
+| 6 | Lowest-rated comments | 3 |
+| 7 | Most directly answered comments | 3 |
+| 8 | Biggest thread below a comment | 3, by replies at any depth |
+
+Chapter 3 ranks by comments alone and prints the count, so a post that was voted down but
+argued over at length still shows up — which is usually the interesting one. Posts nobody
+commented on are left out of it.
 
 Written as `champions.json` (both languages' chapter titles included), `champions.txt` and
 `champions-ru.txt`. Pass `--no-champions` to skip them; they need `--out-dir`.
@@ -213,7 +218,7 @@ Written as `champions.json` (both languages' chapter titles included), `champion
 The comment chapters rank across **every** post at once, so all three winners can sit in
 one thread — which is common, since one lively argument tends to produce all of them. They
 need `--comment-stats`; without it those chapters say so rather than looking empty.
-Chapter 3 skips tiers that no author in the run occupies, and a tier holding a single post
+Chapter 4 skips tiers that no author in the run occupies, and a tier holding a single post
 lists that post however well it did — it is still that tier's worst.
 
 Ties are broken by id, so two runs over the same data produce the same file.
@@ -329,7 +334,7 @@ fetch.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 163 tests, no network access required
+pytest          # 168 tests, no network access required
 ruff check .
 ```
 

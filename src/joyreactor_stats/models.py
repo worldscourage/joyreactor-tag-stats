@@ -132,6 +132,8 @@ class Champion:
     direct_replies: int | None = None
     total_replies: int | None = None
     """Only set for entries chosen by how much they were answered."""
+    comments: int | None = None
+    """Only set where the comment count is the reason the entry is here."""
 
     @property
     def author_stars(self) -> int:
