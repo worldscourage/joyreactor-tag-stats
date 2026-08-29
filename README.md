@@ -25,6 +25,9 @@ average) of their post scores, the sums of their upvoted and downvoted posts kep
 along with the total comments their posts attracted and their first/last post in the
 period.
 
+**The champions of the run:** the standouts, as `champions.json`, `champions.txt` and a
+Russian `champions-ru.txt` — see [Champions](#champions).
+
 Results are printed as tables and, optionally, written as `posts.csv`, `authors.csv` and a
 combined `report.json`.
 
@@ -134,6 +137,7 @@ joy-stats --tag "Бенефис кринжа" --start 2024-08-23 --end 2024-09-0
 | `--last-days N` | Shorthand for `--start` = `--end` minus N days. |
 | `--out-dir DIR` | Write `posts.csv`, `authors.csv`, `report.json` into `DIR`. |
 | `--posts-csv`, `--authors-csv`, `--json` | Write individual files to exact paths. |
+| `--champions` / `--no-champions` | Write the champions files (default: on, needs `--out-dir`). |
 | `--sort-authors-by KEY` | `score_sum` (default), `score_max`, `score_min`, `score_avg`, `score_positive_sum`, `score_negative_sum`, `author_rating`, `posts`, `comments_sum`, `author`. |
 | `--comment-stats` / `--no-comment-stats` | Collect the comment-thread columns, or skip them. With neither, you are asked. |
 | `--common-tag-share F` | Share above which a tag counts as common and is left out of tag-derived titles (default `0.5`; `1` keeps every tag). |
@@ -173,6 +177,7 @@ retried with a backoff, and overlapping pages are de-duplicated by post id.
 | `comments.py` | Fetching a post's comment tree and reducing it to three highlights. |
 | `text.py` | Deriving a title from a post's HTML body, or from its tags. |
 | `rating.py` | The site's rating → stars thresholds, and nothing else. |
+| `champions.py` | The champions post-process: picking the standouts, and wording them. |
 | `stats.py` | Per-author aggregation (min/max/sum/count) and run totals. |
 | `exporters.py` | CSV, JSON, and plain-text table rendering. |
 | `cli.py` | Argument parsing and wiring the pieces together. |
@@ -182,6 +187,47 @@ retried with a backoff, and overlapping pages are de-duplicated by post id.
 The site shows a weighted rating, which is a float and can be negative — `-14.922` is a
 post that got dragged. It is stored as-is (rounded to three decimals in the exports); the
 secondary `ratingGeneral` value the API returns is kept in `score_general` for reference.
+
+### Champions
+
+A post-process over the finished selection that adds **no requests** — it only re-reads
+what the run already collected. Every entry names the author, their stars and rating, the
+post's or comment's own score, a link straight to it, and a title (a comment has none, so
+a short excerpt of its text stands in).
+
+Seven chapters:
+
+| # | Chapter | Holds |
+| --- | --- | --- |
+| 1 | Top posts | The 10 highest-scoring posts |
+| 2 | Bottom posts | The 10 lowest-scoring posts |
+| 3 | Worst post per author star tier | For each tier below 10 stars that appears at all, that tier's lowest-scoring post |
+| 4 | Highest-rated comments | 3 |
+| 5 | Lowest-rated comments | 3 |
+| 6 | Most directly answered comments | 3 |
+| 7 | Biggest thread below a comment | 3, by replies at any depth |
+
+Written as `champions.json` (both languages' chapter titles included), `champions.txt` and
+`champions-ru.txt`. Pass `--no-champions` to skip them; they need `--out-dir`.
+
+The comment chapters rank across **every** post at once, so all three winners can sit in
+one thread — which is common, since one lively argument tends to produce all of them. They
+need `--comment-stats`; without it those chapters say so rather than looking empty.
+Chapter 3 skips tiers that no author in the run occupies, and a tier holding a single post
+lists that post however well it did — it is still that tier's worst.
+
+Ties are broken by id, so two runs over the same data produce the same file.
+
+#### Rebuilding them later
+
+`report.json` carries the comments too, which is what lets the pass run on its own:
+
+```bash
+joy-champions reports/report.json              # writes next to the report
+joy-champions reports/report.json --out-dir /tmp/champs
+```
+
+No network, so it is free to re-run — useful after changing what a chapter should hold.
 
 ### Upvoted and downvoted totals
 
@@ -283,7 +329,7 @@ fetch.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 130 tests, no network access required
+pytest          # 163 tests, no network access required
 ruff check .
 ```
 

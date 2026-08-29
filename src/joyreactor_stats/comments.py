@@ -10,12 +10,17 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
+from dataclasses import replace
 from typing import Any
 
 from .client import GraphQLClient
 from .models import Comment, CommentStats
+from .text import derive_title
 
 logger = logging.getLogger(__name__)
+
+#: Comments have no title, so a short excerpt of the text stands in for one.
+COMMENT_EXCERPT_LENGTH = 100
 
 #: ``parent`` is an interface: a comment answers either the post or another
 #: comment, so the id is only available behind an inline fragment.
@@ -28,8 +33,10 @@ query PostComments($id: ID!) {
         id
         rating
         banned
+        text
         user {
           username
+          rating
         }
         parent {
           __typename
@@ -44,34 +51,55 @@ query PostComments($id: ID!) {
 """
 
 
-def summarize_comments(comments: Sequence[Comment]) -> CommentStats | None:
-    """Reduce a post's comments to its three highlights.
+def analyze_comments(
+    comments: Sequence[Comment],
+) -> tuple[CommentStats | None, list[Comment]]:
+    """Reduce a thread to its highlights *and* hand back the comments enriched.
 
-    Returns ``None`` for a post with no comments, which is a normal state and
-    not an error. Ties are broken in favour of the earlier comment, so repeated
-    runs over the same post always agree.
+    The reply counts are wanted twice over — once for this post's highlights,
+    once for the champions pass across every post — so they are counted here
+    only, and written onto the comments themselves.
     """
     if not comments:
-        return None
-
-    best = max(comments, key=lambda comment: comment.score)
-    worst = min(comments, key=lambda comment: comment.score)
+        return None, []
 
     direct, total = count_replies(comments)
+    counted = [
+        replace(
+            comment,
+            direct_replies=direct[comment.id],
+            total_replies=total[comment.id],
+        )
+        for comment in comments
+    ]
+
+    best = max(counted, key=lambda comment: comment.score)
+    worst = min(counted, key=lambda comment: comment.score)
     most_replied = max(
-        comments,
-        key=lambda comment: (total[comment.id], direct[comment.id]),
+        counted,
+        key=lambda comment: (comment.total_replies, comment.direct_replies),
     )
 
-    return CommentStats(
+    stats = CommentStats(
         best_author=best.author,
         best_score=best.score,
         worst_author=worst.author,
         worst_score=worst.score,
         most_replied_author=most_replied.author,
-        most_replied_direct=direct[most_replied.id],
-        most_replied_total=total[most_replied.id],
+        most_replied_direct=most_replied.direct_replies,
+        most_replied_total=most_replied.total_replies,
     )
+    return stats, counted
+
+
+def summarize_comments(comments: Sequence[Comment]) -> CommentStats | None:
+    """A post's three comment highlights, for callers that want nothing else.
+
+    Returns ``None`` for a post with no comments, which is a normal state and
+    not an error. Ties are broken in favour of the earlier comment, so repeated
+    runs over the same post always agree.
+    """
+    return analyze_comments(comments)[0]
 
 
 def count_replies(
@@ -132,7 +160,7 @@ def _preorder(
     return order
 
 
-def parse_comments(rows: Iterable[dict[str, Any]]) -> list[Comment]:
+def parse_comments(rows: Iterable[dict[str, Any]], post_id: int = 0) -> list[Comment]:
     """Turn API comment rows into :class:`Comment` records, skipping bad ones."""
     from .scraper import decode_global_id  # Imported here to avoid a cycle.
 
@@ -159,15 +187,31 @@ def parse_comments(rows: Iterable[dict[str, Any]]) -> list[Comment]:
                 author=user.get("username") or "(deleted user)",
                 score=float(row.get("rating") or 0.0),
                 parent_id=parent_id,
+                post_id=post_id,
+                text=derive_title(row.get("text"), COMMENT_EXCERPT_LENGTH),
+                author_rating=float(user.get("rating") or 0.0),
             )
         )
     return comments
 
 
+def fetch_comments(
+    client: GraphQLClient, post_global_id: str
+) -> tuple[CommentStats | None, list[Comment]]:
+    """Fetch one post's comment tree, as highlights and as enriched comments."""
+    from .scraper import decode_global_id  # Imported here to avoid a cycle.
+
+    data = client.execute(POST_COMMENTS_QUERY, {"id": post_global_id})
+    node = data.get("node") or {}
+    try:
+        post_id = decode_global_id(node.get("id") or post_global_id)
+    except ValueError:
+        post_id = 0  # Links will be wrong rather than the whole post lost.
+    return analyze_comments(parse_comments(node.get("comments") or [], post_id))
+
+
 def fetch_comment_stats(
     client: GraphQLClient, post_global_id: str
 ) -> CommentStats | None:
-    """Fetch one post's comment tree and reduce it to its highlights."""
-    data = client.execute(POST_COMMENTS_QUERY, {"id": post_global_id})
-    node = data.get("node") or {}
-    return summarize_comments(parse_comments(node.get("comments") or []))
+    """Just the highlights, for callers with no use for the comments."""
+    return fetch_comments(client, post_global_id)[0]

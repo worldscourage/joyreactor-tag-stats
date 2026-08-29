@@ -16,6 +16,7 @@ dev = ["pytest>=8.0", "ruff>=0.5"]
 
 [project.scripts]
 joy-stats = "joyreactor_stats.cli:main"
+joy-champions = "joyreactor_stats.cli:champions_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

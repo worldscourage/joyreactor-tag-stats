@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from joyreactor_stats.config import SITE_TIMEZONE
-from joyreactor_stats.models import Post
+from joyreactor_stats.models import Comment, Post
 
 
 def make_post(
@@ -34,4 +34,30 @@ def make_post(
         nsfw=False,
         banned=False,
         tags=tags,
+    )
+
+
+def make_comment(
+    comment_id: int,
+    author: str = "someone",
+    score: float = 0.0,
+    *,
+    post_id: int = 1,
+    text: str = "",
+    author_rating: float = 0.0,
+    direct_replies: int = 0,
+    total_replies: int = 0,
+    parent_id: int | None = None,
+) -> Comment:
+    """A Comment already carrying its reply counts, as the scraper hands them over."""
+    return Comment(
+        id=comment_id,
+        author=author,
+        score=score,
+        parent_id=parent_id,
+        post_id=post_id,
+        text=text or f"comment {comment_id}",
+        author_rating=author_rating,
+        direct_replies=direct_replies,
+        total_replies=total_replies,
     )

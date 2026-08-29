@@ -13,8 +13,8 @@ from urllib.parse import unquote, urlparse
 
 from . import config
 from .client import GraphQLClient, JoyreactorError
-from .comments import fetch_comment_stats
-from .models import Post
+from .comments import fetch_comments
+from .models import Comment, Post
 from .text import derive_title
 
 logger = logging.getLogger(__name__)
@@ -70,6 +70,12 @@ class TagScraper:
         self._with_comment_stats = with_comment_stats
         self.total_posts_in_tag: int | None = None
         """Post count the API reports for the whole tag line (not just our window)."""
+        self.collected_comments: list[Comment] = []
+        """Every comment read while enriching posts, kept for the champions pass.
+
+        The requests were already spent on the per-post highlights, so holding
+        on to the comments costs nothing but memory.
+        """
 
     def iter_posts(self, tag: str, line_type: str = "ALL") -> Iterator[Post]:
         """Yield every post of ``tag``, newest first.
@@ -145,11 +151,14 @@ class TagScraper:
                 enriched.append(post)  # Nothing to fetch, nothing to say.
                 continue
             try:
-                stats = fetch_comment_stats(self._client, encode_global_id("Post", post.id))
+                stats, comments = fetch_comments(
+                    self._client, encode_global_id("Post", post.id)
+                )
             except JoyreactorError as error:
                 logger.warning("Comments unavailable for post %d: %s", post.id, error)
                 enriched.append(post)
                 continue
+            self.collected_comments.extend(comments)
             enriched.append(replace(post, comment_stats=stats))
             if number % 25 == 0:
                 logger.info("… %d/%d posts processed", number, len(posts))

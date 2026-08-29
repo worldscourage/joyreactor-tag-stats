@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from .models import AuthorSummary, Post
+from .models import AuthorSummary, Comment, Post
 
 #: How many stars the site fits on one row before starting another; we use it
 #: only to decide when spelling the stars out stops being readable.
@@ -85,12 +85,20 @@ def write_json(
     meta: dict[str, Any],
     posts: Sequence[Post],
     authors: Sequence[AuthorSummary],
+    comments: Sequence[Comment] = (),
 ) -> None:
-    """One self-describing file with the run parameters and both result sets."""
+    """One self-describing file with the run parameters and every result set.
+
+    The comments are included when they were collected, which is what lets
+    ``joy-champions`` re-run the champions pass against this file alone.
+    """
+    from .champions import comment_rows  # Imported here to avoid a cycle.
+
     document = {
         "meta": meta,
         "posts": [_post_row(post) for post in posts],
         "authors": [_author_row(item) for item in authors],
+        "comments": comment_rows(comments),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(

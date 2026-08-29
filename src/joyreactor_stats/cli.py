@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import __version__, config
+from .champions import build_champions, load_report, write_all
 from .client import GraphQLClient, JoyreactorError
 from .exporters import (
     format_authors_table,
@@ -86,11 +87,24 @@ def build_parser() -> argparse.ArgumentParser:
     output.add_argument(
         "--out-dir",
         type=Path,
-        help="Write posts.csv, authors.csv and report.json into this directory.",
+        help=(
+            "Write posts.csv, authors.csv, report.json and the champions files "
+            "into this directory."
+        ),
     )
     output.add_argument("--posts-csv", type=Path, help="Write the post rows here.")
     output.add_argument("--authors-csv", type=Path, help="Write the author rows here.")
     output.add_argument("--json", type=Path, help="Write one combined JSON report here.")
+    output.add_argument(
+        "--champions",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Also write champions.json, champions.txt and champions-ru.txt: the "
+            "standouts of the run. Needs --out-dir, costs no extra requests, and "
+            "can be redone later with joy-champions."
+        ),
+    )
     output.add_argument(
         "--sort-authors-by",
         default="score_sum",
@@ -313,6 +327,7 @@ def main(argv: list[str] | None = None) -> int:
             collect_comments = decide_comment_stats(args, posts)
             if collect_comments:
                 posts = scraper.attach_comment_stats(posts)
+            comments = list(scraper.collected_comments)
     except JoyreactorError as error:
         raise SystemExit(f"Could not read the tag: {error}") from error
 
@@ -330,7 +345,9 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     _print_report(args, tag, line_type, start, end, posts, authors, totals)
-    _write_files(args, tag, line_type, start, end, posts, authors, totals)
+    _write_files(
+        args, tag, line_type, start, end, posts, authors, totals, comments, collect_comments
+    )
     return 0
 
 
@@ -358,8 +375,19 @@ def _print_report(args, tag, line_type, start, end, posts, authors, totals) -> N
     print(format_authors_table(authors))
 
 
-def _write_files(args, tag, line_type, start, end, posts, authors, totals) -> None:
+def _write_files(
+    args, tag, line_type, start, end, posts, authors, totals, comments, collect_comments
+) -> None:
     paths = output_paths(args)
+    meta = {
+        "tag": tag,
+        "line_type": line_type,
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "generated_at": datetime.now(tz=config.SITE_TIMEZONE).isoformat(),
+        "tool_version": __version__,
+        "totals": totals,
+    }
     if paths["posts_csv"]:
         write_posts_csv(posts, paths["posts_csv"])
     if paths["authors_csv"]:
@@ -367,21 +395,69 @@ def _write_files(args, tag, line_type, start, end, posts, authors, totals) -> No
     if paths["json"]:
         write_json(
             paths["json"],
-            meta={
-                "tag": tag,
-                "line_type": line_type,
-                "start": start.isoformat(),
-                "end": end.isoformat(),
-                "generated_at": datetime.now(tz=config.SITE_TIMEZONE).isoformat(),
-                "tool_version": __version__,
-                "totals": totals,
-            },
+            meta=meta,
             posts=posts,
             authors=authors,
+            comments=comments,
         )
+
     written = [str(path) for path in paths.values() if path]
+    if args.champions and args.out_dir:
+        chapters = build_champions(posts, comments, comments_collected=collect_comments)
+        champion_meta = {**meta, "posts": len(posts), "comments": len(comments)}
+        written += [
+            str(path) for path in write_all(chapters, args.out_dir, meta=champion_meta)
+        ]
+    elif args.champions and not args.out_dir:
+        logger.info("Skipping the champions files: they need --out-dir.")
     if written:
         print("\nWritten: " + ", ".join(written))
+
+
+def build_champions_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="joy-champions",
+        description=(
+            "Rebuild the champions files from a report.json a previous run "
+            "wrote. Reads no network: everything needed is in that file."
+        ),
+    )
+    parser.add_argument("report", type=Path, help="Path to a report.json.")
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        help="Where to write the champions files (default: next to the report).",
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    return parser
+
+
+def champions_main(argv: list[str] | None = None) -> int:
+    """The champions post-process as a command of its own."""
+    args = build_champions_parser().parse_args(argv)
+    logging.basicConfig(
+        level=logging.INFO, format="%(levelname)s: %(message)s", stream=sys.stderr
+    )
+
+    try:
+        posts, comments, meta = load_report(args.report)
+    except OSError as error:
+        raise SystemExit(f"Could not read {args.report}: {error}") from error
+    except (ValueError, KeyError) as error:
+        raise SystemExit(f"{args.report} is not a report this tool wrote: {error}") from error
+
+    if not comments:
+        logger.info(
+            "The report holds no comments, so the comment chapters stay empty. "
+            "Re-run joy-stats with --comment-stats to fill them."
+        )
+
+    out_dir = args.out_dir or args.report.parent
+    chapters = build_champions(posts, comments)
+    champion_meta = {**meta, "posts": len(posts), "comments": len(comments)}
+    written = write_all(chapters, out_dir, meta=champion_meta)
+    print("Written: " + ", ".join(str(path) for path in written))
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover

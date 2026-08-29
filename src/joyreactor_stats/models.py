@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from .config import SITE_URL
 from .rating import stars_for_rating
 
 
@@ -17,6 +18,23 @@ class Comment:
     score: float
     parent_id: int | None
     """The comment this one replies to; ``None`` for a top-level comment."""
+    post_id: int = 0
+    """The post it was written under, which is what makes a link to it."""
+    text: str = ""
+    """A short plain-text excerpt, standing in for the title a comment lacks."""
+    author_rating: float = 0.0
+    direct_replies: int = 0
+    total_replies: int = 0
+    """Both counts are filled in once the whole thread is known."""
+
+    @property
+    def url(self) -> str:
+        """Permalink, in the ``/post/123#comment456`` form the site itself uses."""
+        return f"{SITE_URL}/post/{self.post_id}#comment{self.id}"
+
+    @property
+    def author_stars(self) -> int:
+        return stars_for_rating(self.author_rating)
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,3 +110,43 @@ class AuthorSummary:
     def author_stars(self) -> int:
         """The rating expressed as the star count the site shows."""
         return stars_for_rating(self.author_rating)
+
+
+@dataclass(frozen=True, slots=True)
+class Champion:
+    """One line of a champions chapter: a post or a comment that stood out.
+
+    Deliberately flat and already resolved — a renderer should only have to
+    format these fields, never go looking for the record behind them, which is
+    what lets the same entry print in any language.
+    """
+
+    kind: str
+    """``"post"`` or ``"comment"``; decides how a renderer labels the link."""
+    title: str
+    url: str
+    score: float
+    """The instance's own rating, not its author's."""
+    author: str
+    author_rating: float
+    direct_replies: int | None = None
+    total_replies: int | None = None
+    """Only set for entries chosen by how much they were answered."""
+
+    @property
+    def author_stars(self) -> int:
+        return stars_for_rating(self.author_rating)
+
+
+@dataclass(frozen=True, slots=True)
+class Chapter:
+    """A titled group of champions.
+
+    ``key`` is the stable name used in the JSON and to look a title up per
+    language, so adding a language never means touching the building code.
+    """
+
+    key: str
+    entries: tuple[Champion, ...]
+    empty_reason: str | None = None
+    """Why a chapter came out empty, when that is worth saying out loud."""
