@@ -55,6 +55,23 @@ AUTHOR_COLUMNS = (
 )
 
 
+def format_site_share(share: dict) -> str:
+    """The tag's slice of the site, for the console."""
+    if share.get("percent") is None:
+        return "Share of the site: nothing was posted in the period"
+
+    line = (
+        f"Share of the site: {share['tag_posts']} of {share['site_posts']} posts "
+        f"({share['percent']:.2f}%)"
+    )
+    if not share.get("complete"):
+        line += (
+            f"\n  (over {share['covered_from'][:16]} … {share['covered_to'][:16]} only — "
+            "as far as the site feed reaches)"
+        )
+    return line
+
+
 def format_side_total(value: float) -> str:
     """A one-sided total, where zero means "nothing on this side at all".
 

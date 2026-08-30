@@ -510,6 +510,50 @@ def test_a_hero_row_reports_a_count_and_no_score(tmp_path):
     assert "score" not in entry
 
 
+def test_the_header_carries_the_site_share_in_both_languages():
+    meta = {
+        "tag": "t",
+        "site_share": {
+            "tag_posts": 34,
+            "site_posts": 500,
+            "percent": 6.8,
+            "complete": True,
+            "covered_from": "2026-08-30T00:00:00+03:00",
+            "covered_to": "2026-08-30T12:00:00+03:00",
+        },
+    }
+    chapters = build_champions([make_post(1, "a", 1.0)], [])
+
+    assert "Share of the site: 34 / 500 (6.80%)" in render_champions(
+        chapters, language="en", meta=meta
+    )
+    assert "Доля от всего сайта: 34 / 500 (6.80%)" in render_champions(
+        chapters, language="ru", meta=meta
+    )
+
+
+def test_a_partial_share_says_what_it_covers_in_the_header():
+    meta = {
+        "site_share": {
+            "tag_posts": 8,
+            "site_posts": 67,
+            "percent": 11.94,
+            "complete": False,
+            "covered_from": "2026-08-30T00:00:00+03:00",
+            "covered_to": "2026-08-30T05:10:00+03:00",
+        }
+    }
+    text = render_champions(build_champions([], []), language="en", meta=meta)
+
+    assert "2026-08-30T00:00 … 2026-08-30T05:10" in text
+
+
+def test_a_run_without_the_share_says_nothing_about_it():
+    text = render_champions(build_champions([], []), meta={"tag": "t"})
+
+    assert "Share of the site" not in text
+
+
 # --- files and the separate command -------------------------------------------
 
 

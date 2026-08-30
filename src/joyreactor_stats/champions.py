@@ -71,6 +71,9 @@ LABELS: dict[str, dict[str, Any]] = {
         "tag": "Tag",
         "period": "Period",
         "generated_from": "Posts / comments",
+        "site_share": "Share of the site",
+        "site_share_partial": "over {since} … {until} only — as far as the site feed reaches",
+        "site_share_none": "nothing was posted in the period",
         "top_posts": f"Top {TOP_POSTS} posts",
         "bottom_posts": f"Bottom {TOP_POSTS} posts",
         "most_commented_posts": f"Top {TOP_POSTS} posts by number of comments",
@@ -110,6 +113,9 @@ LABELS: dict[str, dict[str, Any]] = {
         "tag": "Тег",
         "period": "Период",
         "generated_from": "Постов / комментариев",
+        "site_share": "Доля от всего сайта",
+        "site_share_partial": "только за {since} … {until} — дальше лента сайта не отдаёт",
+        "site_share_none": "за период ничего не публиковалось",
         "top_posts": f"Топ-{TOP_POSTS} постов",
         "bottom_posts": f"Худшие {TOP_POSTS} постов",
         "most_commented_posts": f"Топ-{TOP_POSTS} постов по числу комментариев",
@@ -433,6 +439,28 @@ def _header_lines(meta: dict[str, Any], words: dict[str, Any]) -> list[str]:
     if meta.get("posts") is not None:
         lines.append(
             f"{words['generated_from']}: {meta['posts']} / {meta.get('comments', 0)}"
+        )
+    lines.extend(_share_lines(meta.get("site_share"), words))
+    return lines
+
+
+def _share_lines(share: dict[str, Any] | None, words: dict[str, Any]) -> list[str]:
+    """How much of the site's output carried this tag, when it was counted."""
+    if not share:
+        return []
+    if share.get("percent") is None:
+        return [f"{words['site_share']}: {words['site_share_none']}"]
+
+    lines = [
+        f"{words['site_share']}: {share['tag_posts']} / {share['site_posts']} "
+        f"({share['percent']:.2f}%)"
+    ]
+    if not share.get("complete"):
+        lines.append(
+            "  "
+            + words["site_share_partial"].format(
+                since=share["covered_from"][:16], until=share["covered_to"][:16]
+            )
         )
     return lines
 

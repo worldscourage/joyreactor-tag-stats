@@ -28,6 +28,9 @@ period.
 **The champions of the run:** the standouts, as `champions.json`, `champions.txt` and a
 Russian `champions-ru.txt` — see [Champions](#champions).
 
+**Optionally, the tag's share of the site:** how much of everything posted in the period
+carried this tag — see [Share of the site](#share-of-the-site).
+
 Results are printed as tables and, optionally, written as `posts.csv`, `authors.csv` and a
 combined `report.json`.
 
@@ -137,6 +140,7 @@ joy-stats --tag "Бенефис кринжа" --start 2024-08-23 --end 2024-09-0
 | `--last-days N` | Shorthand for `--start` = `--end` minus N days. |
 | `--out-dir DIR` | Write `posts.csv`, `authors.csv`, `report.json` into `DIR`. |
 | `--posts-csv`, `--authors-csv`, `--json` | Write individual files to exact paths. |
+| `--site-share` | Also work out the tag's share of all posts in the period. Costs roughly 50 requests per day of the period. |
 | `--champions` / `--no-champions` | Write the champions files (default: on, needs `--out-dir`). |
 | `--sort-authors-by KEY` | `score_sum` (default), `score_max`, `score_min`, `score_avg`, `score_positive_sum`, `score_negative_sum`, `author_rating`, `posts`, `comments_sum`, `author`. |
 | `--comment-stats` / `--no-comment-stats` | Collect the comment-thread columns, or skip them. With neither, you are asked. |
@@ -173,6 +177,7 @@ retried with a backoff, and overlapping pages are de-duplicated by post id.
 | --- | --- |
 | `config.py` | Endpoint, time zone, and crawler defaults — the only place with site facts. |
 | `client.py` | GraphQL transport: headers, throttling, retries, error translation. |
+| `site.py` | Counting the site's own output, for the tag's share of it. |
 | `scraper.py` | Paging through a tag line, date-window logic, API rows → `Post`. |
 | `comments.py` | Fetching a post's comment tree and reducing it to three highlights. |
 | `text.py` | Deriving a title from a post's HTML body, or from its tags. |
@@ -187,6 +192,34 @@ retried with a backoff, and overlapping pages are de-duplicated by post id.
 The site shows a weighted rating, which is a float and can be negative — `-14.922` is a
 post that got dragged. It is stored as-is (rounded to three decimals in the exports); the
 secondary `ratingGeneral` value the API returns is kept in `score_general` for reference.
+
+### Share of the site
+
+`--site-share` answers "how big a slice of the site was this tag?". It is **off by
+default** because it is the one expensive thing here: the site has no endpoint that
+answers it, so the count comes from walking the site-wide feed, about 50 requests per day
+of the period. The figure appears in the console, in `report.json`, and in the champions
+header:
+
+```
+Posts: 89   Authors: 36   Total score: +625.59   Comments: 560
+Share of the site: 89 of 461 posts (19.31%)
+```
+
+**Two limits of that feed, both real and both reported rather than hidden.** It stops
+after 1000 posts — a bit under two days at the site's pace — and its index runs hours
+behind live, so its newest post is usually older than "now". When either bites, the share
+is worked out over the stretch that *was* covered, and says so:
+
+```
+Share of the site: 8 of 67 posts (11.94%)
+  (over 2026-08-30T00:00 … 2026-08-30T05:10 only — as far as the site feed reaches)
+```
+
+That narrowing matters: the tag selection is complete for the whole period, so comparing
+all of it against a partial site count would overstate the tag every time. The tag posts
+are cut to the same stretch before the division. For a figure over the whole of a period,
+ask for a period of a day or less that ended a few hours ago.
 
 ### Champions
 
@@ -372,7 +405,7 @@ fetch.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 189 tests, no network access required
+pytest          # 208 tests, no network access required
 ruff check .
 ```
 

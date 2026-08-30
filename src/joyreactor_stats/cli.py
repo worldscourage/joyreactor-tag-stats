@@ -17,12 +17,14 @@ from .exporters import (
     format_authors_table,
     format_comment_highlights,
     format_posts_table,
+    format_site_share,
     write_authors_csv,
     write_json,
     write_posts_csv,
 )
 from .models import Post
 from .scraper import TagScraper, parse_tag_url
+from .site import count_site_posts, tag_posts_between
 from .stats import AUTHOR_SORT_KEYS, overall_totals, summarize_by_author
 from .text import COMMON_TAG_SHARE, fill_missing_titles
 
@@ -95,6 +97,18 @@ def build_parser() -> argparse.ArgumentParser:
     output.add_argument("--posts-csv", type=Path, help="Write the post rows here.")
     output.add_argument("--authors-csv", type=Path, help="Write the author rows here.")
     output.add_argument("--json", type=Path, help="Write one combined JSON report here.")
+    output.add_argument(
+        "--site-share",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Also work out what share of everything posted site-wide in the "
+            "period carried this tag. Walks the site-wide feed, so it costs "
+            "about 50 requests per day of the period; that feed reaches back "
+            "1000 posts, under two days, and a longer period is reported as "
+            "the part it could cover."
+        ),
+    )
     output.add_argument(
         "--champions",
         action=argparse.BooleanOptionalAction,
@@ -328,6 +342,7 @@ def main(argv: list[str] | None = None) -> int:
             if collect_comments:
                 posts = scraper.attach_comment_stats(posts)
             comments = list(scraper.collected_comments)
+            coverage = _site_coverage(args, client, start, end)
     except JoyreactorError as error:
         raise SystemExit(f"Could not read the tag: {error}") from error
 
@@ -344,20 +359,67 @@ def main(argv: list[str] | None = None) -> int:
         scraper.total_posts_in_tag if scraper.total_posts_in_tag is not None else "?",
     )
 
-    _print_report(args, tag, line_type, start, end, posts, authors, totals)
+    share = describe_site_share(posts, coverage)
+    _print_report(args, tag, line_type, start, end, posts, authors, totals, share)
     _write_files(
-        args, tag, line_type, start, end, posts, authors, totals, comments, collect_comments
+        args,
+        tag,
+        line_type,
+        start,
+        end,
+        posts,
+        authors,
+        totals,
+        comments,
+        collect_comments,
+        share,
     )
     return 0
 
 
-def _print_report(args, tag, line_type, start, end, posts, authors, totals) -> None:
+def _site_coverage(args, client, start, end):
+    """Count the site's posts for the period, unless we were told not to."""
+    if not args.site_share:
+        return None
+    logger.info("Counting every post the site published in the period …")
+    return count_site_posts(client, start, end)
+
+
+def describe_site_share(posts: Sequence[Post], coverage) -> dict | None:
+    """The tag's share of the site, as the numbers a reader needs to trust it.
+
+    When the feed could not reach the start of the period, the share is worked
+    out over the stretch it did reach — comparing our whole selection against a
+    partial site count would overstate the tag every time.
+    """
+    if coverage is None:
+        return None
+
+    tag_posts = (
+        len(posts)
+        if coverage.complete
+        else tag_posts_between(posts, coverage.covered_from, coverage.covered_to)
+    )
+    percent = coverage.share_of(tag_posts)
+    return {
+        "tag_posts": tag_posts,
+        "site_posts": coverage.posts,
+        "percent": None if percent is None else round(percent, 2),
+        "complete": coverage.complete,
+        "covered_from": coverage.covered_from.isoformat(),
+        "covered_to": coverage.covered_to.isoformat(),
+    }
+
+
+def _print_report(args, tag, line_type, start, end, posts, authors, totals, share=None) -> None:
     print(f"\nTag: {tag}  ({line_type} line)")
     print(f"Period: {start:%Y-%m-%d %H:%M} … {end:%Y-%m-%d %H:%M} (Europe/Moscow)")
     print(
         f"Posts: {totals['posts']}   Authors: {totals['authors']}   "
         f"Total score: {totals['score_sum']:+.2f}   Comments: {totals['comments_sum']}"
     )
+    if share:
+        print(format_site_share(share))
 
     if not posts:
         print("\nNo posts in this period.")
@@ -376,7 +438,17 @@ def _print_report(args, tag, line_type, start, end, posts, authors, totals) -> N
 
 
 def _write_files(
-    args, tag, line_type, start, end, posts, authors, totals, comments, collect_comments
+    args,
+    tag,
+    line_type,
+    start,
+    end,
+    posts,
+    authors,
+    totals,
+    comments,
+    collect_comments,
+    share=None,
 ) -> None:
     paths = output_paths(args)
     meta = {
@@ -387,6 +459,7 @@ def _write_files(
         "generated_at": datetime.now(tz=config.SITE_TIMEZONE).isoformat(),
         "tool_version": __version__,
         "totals": totals,
+        "site_share": share,
     }
     if paths["posts_csv"]:
         write_posts_csv(posts, paths["posts_csv"])
